@@ -1139,7 +1139,15 @@ export default function App() {
             </div>
           </div>
 
-          <FormSection title="Daftar Pendaftar" icon={<Users className="text-[#7A1F2B]" size={20} />}>
+          <FormSection
+            title="Daftar Pendaftar"
+            icon={<Users className="text-[#7A1F2B]" size={20} />}
+            headerRight={
+              <span className="rounded-full bg-[#7A1F2B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A1F2B]">
+                Total: {submissions.length}
+              </span>
+            }
+          >
             <div className="overflow-x-auto -mx-6 md:-mx-8">
               <table className="w-full min-w-[860px] text-left border-collapse">
                 <thead>
@@ -1605,17 +1613,22 @@ export default function App() {
 function FormSection({
   title,
   icon,
+  headerRight,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
+  headerRight?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center gap-3">
-        {icon}
-        <h3 className="font-semibold text-gray-800">{title}</h3>
+      <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {icon}
+          <h3 className="font-semibold text-gray-800">{title}</h3>
+        </div>
+        {headerRight}
       </div>
       <div className="p-6 md:p-8">{children}</div>
     </div>
