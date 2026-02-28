@@ -53,6 +53,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const heroVideoSrc = "/hero/hero-ramadhan.mp4";
 
   const {
     register,
@@ -195,7 +196,7 @@ export default function App() {
                       className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
                     >
                       <source 
-                        src="/hero/marhaban%20ya%20ramadhan%20careem%23ramadhan%20%23ramadhankareem%20%23car%20%23carcare%20%23carantusiast%20%23dieselpower%20%23d.mp4" 
+                        src={heroVideoSrc}
                         type="video/mp4" 
                       />
                       Your browser does not support the video tag.
