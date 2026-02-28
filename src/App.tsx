@@ -94,6 +94,29 @@ const DEFAULT_VEHICLE_AVAILABILITY: VehicleAvailability = {
   non_kendaraan: { isFull: false },
 };
 
+function buildVehicleAvailability(mobilUsed: number, motorUsed: number): VehicleAvailability {
+  const mobilLimit = DEFAULT_VEHICLE_AVAILABILITY.mobil.limit;
+  const motorLimit = DEFAULT_VEHICLE_AVAILABILITY.motor.limit;
+
+  return {
+    mobil: {
+      limit: mobilLimit,
+      used: mobilUsed,
+      remaining: Math.max(0, mobilLimit - mobilUsed),
+      isFull: mobilUsed >= mobilLimit,
+    },
+    motor: {
+      limit: motorLimit,
+      used: motorUsed,
+      remaining: Math.max(0, motorLimit - motorUsed),
+      isFull: motorUsed >= motorLimit,
+    },
+    non_kendaraan: {
+      isFull: false,
+    },
+  };
+}
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -409,6 +432,65 @@ export default function App() {
         body: JSON.stringify(data),
       });
 
+      if (response.status === 404) {
+        const sessionUserId = session?.user?.id ?? "";
+        const sessionUserEmail = session?.user?.email ?? "";
+        if (!sessionUserId || !sessionUserEmail) {
+          await handleUnauthorized();
+          return;
+        }
+
+        const [mobilUsage, motorUsage] = await Promise.all([
+          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "mobil"),
+          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "motor"),
+        ]);
+
+        if (mobilUsage.error || motorUsage.error) {
+          const message = mobilUsage.error?.message ?? motorUsage.error?.message ?? "Gagal cek kuota kendaraan.";
+          alert(message);
+          return;
+        }
+
+        const fallbackAvailability = buildVehicleAvailability(mobilUsage.count ?? 0, motorUsage.count ?? 0);
+        setVehicleAvailability(fallbackAvailability);
+
+        if (
+          (data.vehicleType === "mobil" || data.vehicleType === "motor") &&
+          fallbackAvailability[data.vehicleType].isFull
+        ) {
+          setError("vehicleType", {
+            type: "manual",
+            message: `Kuota ${data.vehicleType} sudah penuh.`,
+          });
+          return;
+        }
+
+        const { error: insertError } = await supabase.from("submissions").insert({
+          name: data.name,
+          email: sessionUserEmail,
+          user_id: sessionUserId,
+          phone: data.phone,
+          organization: data.organization ?? "",
+          role: data.role ?? "",
+          vehicle_type: data.vehicleType,
+          transfer_proof: data.transferProof,
+        });
+
+        if (insertError) {
+          alert(insertError.message);
+          return;
+        }
+
+        setIsSubmitted(true);
+        reset();
+        setTransferProofName("");
+        if (transferProofInputRef.current) {
+          transferProofInputRef.current.value = "";
+        }
+        await fetchVehicleAvailability();
+        return;
+      }
+
       if (response.status === 401) {
         await handleUnauthorized();
         return;
@@ -433,9 +515,18 @@ export default function App() {
         }
         await fetchVehicleAvailability();
       } else {
-        const payload = await response.json().catch(() => null);
-        const errorMessage = payload && typeof payload.error === "string" ? payload.error : null;
-        alert(errorMessage ?? "Gagal mengirim formulir. Silakan coba lagi.");
+        const responseText = await response.text().catch(() => "");
+        let parsedError: string | null = null;
+        if (responseText) {
+          try {
+            const payload = JSON.parse(responseText) as { error?: string };
+            parsedError = typeof payload.error === "string" ? payload.error : null;
+          } catch {
+            parsedError = null;
+          }
+        }
+
+        alert(parsedError ?? `Gagal mengirim formulir (HTTP ${response.status}). Silakan coba lagi.`);
       }
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -461,6 +552,20 @@ export default function App() {
 
       if (response.status === 401) {
         await handleUnauthorized();
+        return;
+      }
+
+      if (response.status === 404) {
+        const [mobilUsage, motorUsage] = await Promise.all([
+          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "mobil"),
+          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "motor"),
+        ]);
+
+        if (mobilUsage.error || motorUsage.error) {
+          throw new Error(mobilUsage.error?.message ?? motorUsage.error?.message ?? "Failed to fetch vehicle usage");
+        }
+
+        setVehicleAvailability(buildVehicleAvailability(mobilUsage.count ?? 0, motorUsage.count ?? 0));
         return;
       }
 
@@ -496,6 +601,25 @@ export default function App() {
 
       if (response.status === 403) {
         setShowAdmin(false);
+        return;
+      }
+
+      if (response.status === 404) {
+        if (!isAdmin) {
+          setShowAdmin(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("submissions")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        setSubmissions((data ?? []) as Submission[]);
         return;
       }
 
@@ -542,8 +666,14 @@ export default function App() {
       }
 
       if (response.status === 404) {
-        alert("Data pendaftar tidak ditemukan.");
-        await fetchSubmissions();
+        const { error: deleteError } = await supabase.from("submissions").delete().eq("id", submissionId);
+        if (deleteError) {
+          alert(deleteError.message);
+          return;
+        }
+
+        setSubmissions((prev) => prev.filter((item) => item.id !== submissionId));
+        await fetchVehicleAvailability();
         return;
       }
 
@@ -644,6 +774,73 @@ export default function App() {
 
       if (profileResponse.status === 401 || historyResponse.status === 401) {
         await handleUnauthorized();
+        return;
+      }
+
+      if (profileResponse.status === 404 || historyResponse.status === 404) {
+        const currentUser = session?.user;
+        if (!currentUser) {
+          await handleUnauthorized();
+          return;
+        }
+
+        const profileData: AccountProfile = {
+          id: currentUser.id ?? null,
+          email: currentUser.email ?? null,
+          full_name:
+            typeof currentUser.user_metadata?.full_name === "string"
+              ? currentUser.user_metadata.full_name
+              : typeof currentUser.user_metadata?.name === "string"
+                ? currentUser.user_metadata.name
+                : null,
+          created_at: currentUser.created_at ?? null,
+          last_sign_in_at: currentUser.last_sign_in_at ?? null,
+        };
+        setAccountProfile(profileData);
+
+        const userId = currentUser.id ?? "";
+        const email = currentUser.email ?? "";
+        const { data: ownRows, error: ownRowsError } = await supabase
+          .from("submissions")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (ownRowsError) {
+          throw new Error(ownRowsError.message);
+        }
+
+        let legacyRows: Submission[] = [];
+        if (email) {
+          const { data: legacyData, error: legacyError } = await supabase
+            .from("submissions")
+            .select("*")
+            .is("user_id", null)
+            .eq("email", email)
+            .order("created_at", { ascending: false });
+
+          if (legacyError) {
+            throw new Error(legacyError.message);
+          }
+
+          legacyRows = (legacyData ?? []) as Submission[];
+        }
+
+        const mergedMap = new Map<number, Submission>();
+        for (const row of (ownRows ?? []) as Submission[]) {
+          mergedMap.set(row.id, row);
+        }
+        for (const row of legacyRows) {
+          mergedMap.set(row.id, row);
+        }
+
+        const mergedRows = Array.from(mergedMap.values()).sort((a, b) => {
+          const timeA = new Date(a.created_at).getTime();
+          const timeB = new Date(b.created_at).getTime();
+          return timeB - timeA;
+        });
+
+        setMySubmissions(mergedRows);
         return;
       }
 
