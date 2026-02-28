@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -8,11 +8,14 @@ import {
   Users,
   ArrowLeft,
   LogOut,
+  Car,
+  Bike,
+  Clock3,
   Loader2,
   Send,
   User,
-  Building2,
-  Heart,
+  UserRound,
+  ReceiptText,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -30,10 +33,11 @@ function cn(...inputs: ClassValue[]) {
 const formSchema = z.object({
   name: z.string().min(3, "Nama minimal 3 karakter"),
   email: z.string().email("Email tidak valid"),
-  phone: z.string().min(10, "Nomor telepon minimal 10 digit").optional().or(z.literal("")),
+  phone: z.string().min(10, "Nomor WhatsApp minimal 10 digit"),
   organization: z.string().min(2, "Nama organisasi minimal 2 karakter").optional().or(z.literal("")),
   role: z.string().min(2, "Jabatan minimal 2 karakter").optional().or(z.literal("")),
-  interest: z.string().min(5, "Tolong jelaskan minat Anda minimal 5 karakter").optional().or(z.literal("")),
+  vehicleType: z.string().min(1, "Silakan pilih jenis kendaraan"),
+  transferProof: z.string().min(1, "Bukti transfer wajib diunggah"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -45,12 +49,55 @@ interface Submission {
   phone: string;
   organization: string;
   role: string;
-  interest: string;
+  vehicle_type: string;
+  transfer_proof: string;
   created_at: string;
+}
+
+interface AccountProfile {
+  id: string | null;
+  email: string | null;
+  full_name: string | null;
+  created_at: string | null;
+  last_sign_in_at: string | null;
 }
 
 type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
+const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
+
+interface VehicleAvailability {
+  mobil: {
+    limit: number;
+    used: number;
+    remaining: number;
+    isFull: boolean;
+  };
+  motor: {
+    limit: number;
+    used: number;
+    remaining: number;
+    isFull: boolean;
+  };
+  non_kendaraan: {
+    isFull: boolean;
+  };
+}
+
+const DEFAULT_VEHICLE_AVAILABILITY: VehicleAvailability = {
+  mobil: { limit: 30, used: 0, remaining: 30, isFull: false },
+  motor: { limit: 20, used: 0, remaining: 20, isFull: false },
+  non_kendaraan: { isFull: false },
+};
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("Gagal membaca file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 function mapAuthErrorMessage(message: string, mode: AuthMode) {
   const normalized = message.toLowerCase();
@@ -62,11 +109,46 @@ function mapAuthErrorMessage(message: string, mode: AuthMode) {
   return message;
 }
 
+function getVehicleTypeLabel(vehicleType: string) {
+  if (vehicleType === "non_kendaraan") {
+    return "Non Kendaraan";
+  }
+
+  if (!vehicleType) {
+    return "-";
+  }
+
+  return vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1);
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function App() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [mySubmissions, setMySubmissions] = useState<Submission[]>([]);
+  const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -76,6 +158,11 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [transferProofName, setTransferProofName] = useState("");
+  const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability>(
+    DEFAULT_VEHICLE_AVAILABILITY,
+  );
+  const transferProofInputRef = useRef<HTMLInputElement>(null);
   const heroVideoSrc = "/hero/hero-ramadhan.mp4";
   const isAdmin = (session?.user?.email ?? "").toLowerCase() === ADMIN_EMAIL;
 
@@ -83,10 +170,69 @@ export default function App() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    setError,
+    clearErrors,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   });
+  const selectedVehicleType = watch("vehicleType");
+
+  const handleTransferProofChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setTransferProofName("");
+      setValue("transferProof", "", { shouldValidate: true });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setTransferProofName("");
+      setValue("transferProof", "", { shouldValidate: true });
+      setError("transferProof", {
+        type: "manual",
+        message: "File harus berupa gambar (JPG, PNG, WEBP).",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_TRANSFER_PROOF_SIZE_BYTES) {
+      setTransferProofName("");
+      setValue("transferProof", "", { shouldValidate: true });
+      setError("transferProof", {
+        type: "manual",
+        message: "Ukuran file maksimal 5MB.",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const fileDataUrl = await readFileAsDataUrl(file);
+      if (!fileDataUrl) {
+        throw new Error("File data kosong.");
+      }
+
+      setTransferProofName(file.name);
+      setValue("transferProof", fileDataUrl, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      clearErrors("transferProof");
+    } catch (error) {
+      console.error("Failed to parse transfer proof image:", error);
+      setTransferProofName("");
+      setValue("transferProof", "", { shouldValidate: true });
+      setError("transferProof", {
+        type: "manual",
+        message: "Gagal membaca file. Silakan pilih ulang gambar.",
+      });
+      event.target.value = "";
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -134,18 +280,26 @@ export default function App() {
   const handleUnauthorized = async () => {
     setAuthError("Sesi login Anda berakhir. Silakan login kembali.");
     setShowAdmin(false);
+    setShowProfile(false);
     setIsSubmitted(false);
     setSubmissions([]);
+    setMySubmissions([]);
+    setAccountProfile(null);
+    setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
     setSession(null);
     await supabase.auth.signOut({ scope: "local" });
   };
 
   const handleLogout = async () => {
     setShowAdmin(false);
+    setShowProfile(false);
     setIsSubmitted(false);
     setSubmissions([]);
+    setMySubmissions([]);
+    setAccountProfile(null);
     setAuthError("");
     setAuthMessage("");
+    setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
     setSession(null);
 
     // Clear local session first so logout works even if network/revoke fails.
@@ -224,6 +378,14 @@ export default function App() {
   };
 
   const onSubmit = async (data: FormData) => {
+    if ((data.vehicleType === "mobil" || data.vehicleType === "motor") && vehicleAvailability[data.vehicleType].isFull) {
+      setError("vehicleType", {
+        type: "manual",
+        message: `Kuota ${data.vehicleType} sudah penuh.`,
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const accessToken = await getAccessToken();
@@ -246,9 +408,24 @@ export default function App() {
         return;
       }
 
+      if (response.status === 409) {
+        const payload = await response.json().catch(() => null);
+        setError("vehicleType", {
+          type: "manual",
+          message: payload?.error ?? "Kuota kendaraan sudah penuh.",
+        });
+        await fetchVehicleAvailability();
+        return;
+      }
+
       if (response.ok) {
         setIsSubmitted(true);
         reset();
+        setTransferProofName("");
+        if (transferProofInputRef.current) {
+          transferProofInputRef.current.value = "";
+        }
+        await fetchVehicleAvailability();
       } else {
         alert("Gagal mengirim formulir. Silakan coba lagi.");
       }
@@ -257,6 +434,36 @@ export default function App() {
       alert("Terjadi kesalahan koneksi.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchVehicleAvailability = async () => {
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        await handleUnauthorized();
+        return;
+      }
+
+      const response = await fetch("/api/vehicle-availability", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch vehicle availability");
+      }
+
+      const data = (await response.json()) as VehicleAvailability;
+      setVehicleAvailability(data);
+    } catch (error) {
+      console.error("Error fetching vehicle availability:", error);
     }
   };
 
@@ -295,17 +502,77 @@ export default function App() {
     }
   };
 
+  const fetchProfileData = async () => {
+    setIsProfileLoading(true);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        await handleUnauthorized();
+        return;
+      }
+
+      const [profileResponse, historyResponse] = await Promise.all([
+        fetch("/api/me", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch("/api/my-submissions", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+      ]);
+
+      if (profileResponse.status === 401 || historyResponse.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (!profileResponse.ok) {
+        throw new Error("Failed to fetch profile");
+      }
+
+      if (!historyResponse.ok) {
+        throw new Error("Failed to fetch submission history");
+      }
+
+      const profileData = (await profileResponse.json()) as AccountProfile;
+      const historyData = (await historyResponse.json()) as Submission[];
+      setAccountProfile(profileData);
+      setMySubmissions(historyData);
+    } catch (error) {
+      console.error("Error fetching profile data:", error);
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (showAdmin && session) {
       fetchSubmissions();
     }
   }, [showAdmin, session]);
 
+  useEffect(() => {
+    if (showProfile && session) {
+      fetchProfileData();
+    }
+  }, [showProfile, session]);
+
+  useEffect(() => {
+    if (session) {
+      fetchVehicleAvailability();
+    }
+  }, [session]);
+
+  const handleOpenProfile = () => {
+    setShowAdmin(false);
+    setShowProfile(true);
+  };
+
   const handleOpenAdmin = () => {
     if (!isAdmin) {
       return;
     }
 
+    setShowProfile(false);
     setShowAdmin(true);
   };
 
@@ -435,13 +702,15 @@ export default function App() {
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Organisasi</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Jabatan</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kendaraan</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Bukti</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tanggal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {submissions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-400 italic">
+                      <td colSpan={7} className="p-8 text-center text-gray-400 italic">
                         Belum ada data masuk
                       </td>
                     </tr>
@@ -452,6 +721,27 @@ export default function App() {
                         <td className="p-4 text-sm text-gray-600">{sub.email}</td>
                         <td className="p-4 text-sm text-gray-600">{sub.organization || "-"}</td>
                         <td className="p-4 text-sm text-gray-600">{sub.role || "-"}</td>
+                        <td className="p-4 text-sm text-gray-600">
+                          {sub.vehicle_type === "non_kendaraan"
+                            ? "Non Kendaraan"
+                            : sub.vehicle_type
+                              ? sub.vehicle_type.charAt(0).toUpperCase() + sub.vehicle_type.slice(1)
+                              : "-"}
+                        </td>
+                        <td className="p-4 text-sm text-gray-600">
+                          {sub.transfer_proof ? (
+                            <a
+                              href={sub.transfer_proof}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#673AB7] hover:underline"
+                            >
+                              Lihat
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
                         <td className="p-4 text-sm text-gray-500">
                           {new Date(sub.created_at).toLocaleDateString("id-ID", {
                             day: "numeric",
@@ -471,13 +761,121 @@ export default function App() {
     );
   }
 
+  if (showProfile) {
+    const profileEmail = accountProfile?.email ?? session.user.email ?? "-";
+    const profileCreatedAt = accountProfile?.created_at ?? session.user.created_at ?? null;
+    const profileLastSignInAt = accountProfile?.last_sign_in_at ?? session.user.last_sign_in_at ?? null;
+
+    return (
+      <div className="min-h-screen bg-[#F0EBF8] py-8 px-4">
+        <div className="max-w-5xl mx-auto space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setShowProfile(false)}
+              className="flex items-center gap-2 text-[#673AB7] hover:text-[#5E35B1] font-medium transition-colors"
+            >
+              <ArrowLeft size={20} />
+              Kembali ke Formulir
+            </button>
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-[#202124]">Profil Akun</h1>
+              <button
+                onClick={handleLogout}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+                aria-label="Logout"
+                title="Logout"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center gap-3">
+              <UserRound className="text-[#673AB7]" size={20} />
+              <h3 className="font-semibold text-gray-800">Informasi Akun</h3>
+            </div>
+            <div className="p-6 md:p-8 grid gap-4 md:grid-cols-2">
+              <ProfileItem label="Email" value={profileEmail} />
+              <ProfileItem label="Tanggal Daftar" value={formatDateTime(profileCreatedAt)} />
+              <ProfileItem label="Login Terakhir" value={formatDateTime(profileLastSignInAt)} />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center gap-3">
+              <Clock3 className="text-[#673AB7]" size={20} />
+              <h3 className="font-semibold text-gray-800">Riwayat Pengisian Form</h3>
+            </div>
+
+            {isProfileLoading ? (
+              <div className="p-8 text-center text-gray-500">Memuat riwayat...</div>
+            ) : mySubmissions.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 italic">Belum ada riwayat pengisian form.</div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {mySubmissions.map((submission) => (
+                  <div key={submission.id} className="p-5 md:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-base font-semibold text-[#202124]">{submission.name}</p>
+                      <p className="text-xs font-medium text-gray-500">{formatDateTime(submission.created_at)}</p>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-gray-600">
+                      <p>
+                        <span className="font-medium text-gray-800">Email:</span> {submission.email || "-"}
+                      </p>
+                      <p>
+                        <span className="font-medium text-gray-800">WhatsApp:</span> {submission.phone || "-"}
+                      </p>
+                      <p>
+                        <span className="font-medium text-gray-800">Kendaraan:</span>{" "}
+                        {getVehicleTypeLabel(submission.vehicle_type)}
+                      </p>
+                      <p>
+                        <span className="font-medium text-gray-800">Organisasi:</span>{" "}
+                        {submission.organization || "-"}
+                      </p>
+                    </div>
+                    <div className="mt-3">
+                      <span className="text-sm font-medium text-gray-800">Bukti transfer: </span>
+                      {submission.transfer_proof ? (
+                        <a
+                          href={submission.transfer_proof}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-[#673AB7] hover:underline"
+                        >
+                          Lihat gambar
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-500">-</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F0EBF8] pb-12">
       {/* Google Forms Style Header Accent */}
       <div className="h-2.5 bg-[#673AB7] w-full sticky top-0 z-10" />
 
       <div className="max-w-3xl mx-auto px-4 pt-8">
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end gap-2 mb-4">
+          <button
+            onClick={handleOpenProfile}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+            aria-label="Profile"
+            title="Profile"
+          >
+            <UserRound size={16} />
+          </button>
           <button
             onClick={handleLogout}
             className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
@@ -567,7 +965,8 @@ export default function App() {
                       placeholder="contoh@email.com"
                     />
                     <InputField
-                      label="Nomor Telepon"
+                      label="Nomor WhatsApp"
+                      required
                       error={errors.phone?.message}
                       {...register("phone")}
                       placeholder="0812xxxxxx"
@@ -575,42 +974,116 @@ export default function App() {
                   </div>
                 </FormSection>
 
-                {/* Professional Data */}
-                <FormSection
-                  title="Informasi Profesional"
-                  icon={<Building2 className="text-[#673AB7]" size={20} />}
-                >
-                  <div className="space-y-6">
-                    <InputField
-                      label="Nama Organisasi / Perusahaan"
-                      error={errors.organization?.message}
-                      {...register("organization")}
-                      placeholder="PT. Contoh Indonesia"
-                    />
-                    <InputField
-                      label="Jabatan / Posisi"
-                      error={errors.role?.message}
-                      {...register("role")}
-                      placeholder="Software Engineer"
-                    />
+                <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#673AB7]" size={20} />}>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Pilih kendaraan yang digunakan <span className="text-red-500">*</span>
+                    </label>
+                    <input type="hidden" {...register("vehicleType")} />
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {[
+                        {
+                          value: "mobil",
+                          label: "Mobil",
+                          description: "Kapasitas maksimal 30 kendaraan",
+                          icon: <Car size={18} />,
+                        },
+                        {
+                          value: "motor",
+                          label: "Motor",
+                          description: "Kapasitas maksimal 20 kendaraan",
+                          icon: <Bike size={18} />,
+                        },
+                        {
+                          value: "non_kendaraan",
+                          label: "Non Kendaraan",
+                          description: "Datang tanpa kendaraan pribadi",
+                          icon: <User size={18} />,
+                        },
+                      ].map((option) => {
+                        const isSelected = selectedVehicleType === option.value;
+                        const isLimitedOption = option.value === "mobil" || option.value === "motor";
+                        const availability =
+                          option.value === "mobil"
+                            ? vehicleAvailability.mobil
+                            : option.value === "motor"
+                              ? vehicleAvailability.motor
+                              : null;
+                        const isFull = isLimitedOption ? Boolean(availability?.isFull) : false;
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            disabled={isFull}
+                            onClick={() => {
+                              setValue("vehicleType", option.value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                              clearErrors("vehicleType");
+                            }}
+                            className={cn(
+                              "rounded-2xl border p-4 text-left transition-all",
+                              isSelected &&
+                                "border-[#673AB7] bg-gradient-to-br from-[#673AB7]/10 to-white ring-2 ring-[#673AB7]/20 shadow-sm",
+                              !isSelected && !isFull && "border-gray-200 bg-white hover:border-[#673AB7]/40 hover:shadow-sm",
+                              isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={cn("text-[#673AB7]", isFull && "text-gray-400")}>{option.icon}</span>
+                                <p className="font-semibold">{option.label}</p>
+                              </div>
+                              {isSelected ? (
+                                <span className="text-[11px] font-semibold text-[#673AB7] bg-[#673AB7]/10 px-2 py-1 rounded-full">
+                                  Dipilih
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-2 text-xs text-gray-500">{option.description}</p>
+
+                            {isLimitedOption && availability ? (
+                              <p className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#673AB7]")}>
+                                {isFull ? "Kuota penuh" : `Sisa ${availability.remaining} slot`}
+                              </p>
+                            ) : (
+                              <p className="mt-3 text-xs font-semibold text-emerald-600">Selalu tersedia</p>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.vehicleType ? (
+                      <p className="text-xs text-red-500">{errors.vehicleType.message}</p>
+                    ) : null}
                   </div>
                 </FormSection>
 
-                {/* Additional Info */}
-                <FormSection title="Informasi Tambahan" icon={<Heart className="text-[#673AB7]" size={20} />}>
-                  <div className="space-y-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Apa yang membuat Anda tertarik mengikuti event ini?
+                <FormSection title="Bukti Transfer" icon={<ReceiptText className="text-[#673AB7]" size={20} />}>
+                  <div className="space-y-3">
+                    <input type="hidden" {...register("transferProof")} />
+                    <label className="block text-sm font-medium text-gray-700">
+                      Upload screenshot bukti transfer <span className="text-red-500">*</span>
                     </label>
-                    <textarea
-                      {...register("interest")}
+                    <input
+                      ref={transferProofInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleTransferProofChange}
                       className={cn(
-                        "w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#673AB7]/20 focus:border-[#673AB7] outline-none transition-all min-h-[120px] resize-none",
-                        errors.interest && "border-red-500 focus:ring-red-500/20 focus:border-red-500",
+                        "w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#673AB7] file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-[#5E35B1]",
+                        errors.transferProof && "border-red-500",
                       )}
-                      placeholder="Ceritakan sedikit motivasi Anda..."
                     />
-                    {errors.interest && <p className="text-xs text-red-500 mt-1">{errors.interest.message}</p>}
+                    <p className="text-xs text-gray-500">Format gambar, maksimal 5MB.</p>
+                    {transferProofName ? (
+                      <p className="text-xs text-gray-700">File terpilih: {transferProofName}</p>
+                    ) : null}
+                    {errors.transferProof ? (
+                      <p className="text-xs text-red-500">{errors.transferProof.message}</p>
+                    ) : null}
                   </div>
                 </FormSection>
 
@@ -682,6 +1155,15 @@ function FormSection({
         <h3 className="font-semibold text-gray-800">{title}</h3>
       </div>
       <div className="p-6 md:p-8">{children}</div>
+    </div>
+  );
+}
+
+function ProfileItem({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={cn("rounded-lg border border-gray-100 bg-gray-50 p-4", className)}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-1 text-sm text-gray-800">{value}</p>
     </div>
   );
 }
