@@ -10,7 +10,6 @@ import {
   LogOut,
   Trash2,
   Download,
-  ExternalLink,
   Car,
   Bike,
   Clock3,
@@ -68,8 +67,6 @@ type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
 const TRANSFER_PROOF_BUCKET = "bukti-transfer";
-const GOOGLE_SHEET_URL =
-  "https://docs.google.com/spreadsheets/d/1jWHcaUyJf0zhUxYp4US9KfDYRervAKUJZ1jETJ-jkro/edit?hl=id&gid=0#gid=0";
 
 interface VehicleAvailability {
   mobil: {
@@ -1138,15 +1135,6 @@ export default function App() {
                   {isExportingExcel ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                   {isExportingExcel ? "Memproses..." : "Download Excel"}
                 </button>
-                <a
-                  href={GOOGLE_SHEET_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#7A1F2B]/20 px-4 py-2.5 text-sm font-semibold text-[#7A1F2B] transition-colors hover:bg-[#7A1F2B]/5"
-                >
-                  <ExternalLink size={16} />
-                  Buka Spreadsheet
-                </a>
               </div>
             </div>
           </div>
