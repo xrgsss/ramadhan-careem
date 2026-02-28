@@ -283,16 +283,17 @@ async function startServer() {
   app.post("/api/submit", requireAuth, (req, res) => {
     const authUser = res.locals.authUser as SupabaseUser | undefined;
     const authUserId = typeof authUser?.id === "string" ? authUser.id : "";
-    const { name, email, phone, organization, role, vehicleType, transferProof } = req.body;
+    const authUserEmail = typeof authUser?.email === "string" ? authUser.email : "";
+    const { name, phone, organization, role, vehicleType, transferProof } = req.body;
 
-    if (!authUserId) {
+    if (!authUserId || !authUserEmail) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     
-    if (!name || !email || !phone || !vehicleType || !transferProof) {
+    if (!name || !phone || !vehicleType || !transferProof) {
       return res
         .status(400)
-        .json({ error: "Name, email, phone, vehicle type, and transfer proof are required" });
+        .json({ error: "Name, phone, vehicle type, and transfer proof are required" });
     }
 
     if (typeof phone !== "string" || phone.trim().length < 10) {
@@ -327,7 +328,7 @@ async function startServer() {
         INSERT INTO submissions (name, email, user_id, phone, organization, role, vehicle_type, transfer_proof)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      const result = stmt.run(name, email, authUserId, phone, organization, role, vehicleType, transferProof);
+      const result = stmt.run(name, authUserEmail, authUserId, phone, organization, role, vehicleType, transferProof);
       res.json({ success: true, id: result.lastInsertRowid });
     } catch (error) {
       console.error("Database error:", error);
@@ -341,6 +342,24 @@ async function startServer() {
       res.json(submissions);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch submissions" });
+    }
+  });
+
+  app.delete("/api/submissions/:id", requireAuth, requireAdmin, (req, res) => {
+    const submissionId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(submissionId) || submissionId <= 0) {
+      return res.status(400).json({ error: "Invalid submission id" });
+    }
+
+    try {
+      const result = db.prepare("DELETE FROM submissions WHERE id = ?").run(submissionId);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete submission" });
     }
   });
 

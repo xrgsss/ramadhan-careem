@@ -8,6 +8,9 @@ import {
   Users,
   ArrowLeft,
   LogOut,
+  Trash2,
+  Download,
+  ExternalLink,
   Car,
   Bike,
   Clock3,
@@ -32,7 +35,6 @@ function cn(...inputs: ClassValue[]) {
 // Validation Schema
 const formSchema = z.object({
   name: z.string().min(3, "Nama minimal 3 karakter"),
-  email: z.string().email("Email tidak valid"),
   phone: z.string().min(10, "Nomor WhatsApp minimal 10 digit"),
   organization: z.string().min(2, "Nama organisasi minimal 2 karakter").optional().or(z.literal("")),
   role: z.string().min(2, "Jabatan minimal 2 karakter").optional().or(z.literal("")),
@@ -65,6 +67,8 @@ interface AccountProfile {
 type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
+const GOOGLE_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1jWHcaUyJf0zhUxYp4US9KfDYRervAKUJZ1jETJ-jkro/edit?hl=id&gid=0#gid=0";
 
 interface VehicleAvailability {
   mobil: {
@@ -146,6 +150,8 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [deletingSubmissionId, setDeletingSubmissionId] = useState<number | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [mySubmissions, setMySubmissions] = useState<Submission[]>([]);
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
@@ -427,7 +433,9 @@ export default function App() {
         }
         await fetchVehicleAvailability();
       } else {
-        alert("Gagal mengirim formulir. Silakan coba lagi.");
+        const payload = await response.json().catch(() => null);
+        const errorMessage = payload && typeof payload.error === "string" ? payload.error : null;
+        alert(errorMessage ?? "Gagal mengirim formulir. Silakan coba lagi.");
       }
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -499,6 +507,120 @@ export default function App() {
       setSubmissions(data);
     } catch (error) {
       console.error("Error fetching submissions:", error);
+    }
+  };
+
+  const handleDeleteSubmission = async (submissionId: number) => {
+    const confirmed = window.confirm("Hapus data pendaftar ini?");
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingSubmissionId(submissionId);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        await handleUnauthorized();
+        return;
+      }
+
+      const response = await fetch(`/api/submissions/${submissionId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (response.status === 403) {
+        setShowAdmin(false);
+        return;
+      }
+
+      if (response.status === 404) {
+        alert("Data pendaftar tidak ditemukan.");
+        await fetchSubmissions();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to delete submission");
+      }
+
+      setSubmissions((prev) => prev.filter((item) => item.id !== submissionId));
+      await fetchVehicleAvailability();
+    } catch (error) {
+      console.error("Error deleting submission:", error);
+      alert("Gagal menghapus data pendaftar.");
+    } finally {
+      setDeletingSubmissionId(null);
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (submissions.length === 0) {
+      alert("Belum ada data pendaftar untuk diunduh.");
+      return;
+    }
+
+    setIsExportingExcel(true);
+    try {
+      const XLSX = await import("xlsx");
+      const rows = submissions.map((sub, index) => ({
+        No: index + 1,
+        Nama: sub.name || "-",
+        Email: sub.email || "-",
+        WhatsApp: sub.phone || "-",
+        Organisasi: sub.organization || "-",
+        Jabatan: sub.role || "-",
+        Kendaraan: getVehicleTypeLabel(sub.vehicle_type),
+        "Bukti Transfer": sub.transfer_proof ? "Ada" : "Tidak",
+        Tanggal: formatDateTime(sub.created_at),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet["!cols"] = [
+        { wch: 6 },
+        { wch: 24 },
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 24 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Pendaftar");
+
+      const excelBuffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+      });
+
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const dateTag = new Date().toISOString().slice(0, 10);
+      link.href = downloadUrl;
+      link.download = `pendaftaran-ramadhan-${dateTag}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("Error exporting Excel:", error);
+      alert("Gagal membuat file Excel.");
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -670,9 +792,11 @@ export default function App() {
 
   if (showAdmin) {
     return (
-      <div className="min-h-screen bg-[#F8EFF1] py-8 px-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
+      <div className="min-h-screen bg-[#F8EFF1] pb-12">
+        <div className="h-2.5 bg-[#7A1F2B] w-full sticky top-0 z-10" />
+
+        <div className="max-w-3xl mx-auto px-4 pt-8">
+          <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setShowAdmin(false)}
               className="flex items-center gap-2 text-[#7A1F2B] hover:text-[#651823] font-medium transition-colors"
@@ -680,37 +804,62 @@ export default function App() {
               <ArrowLeft size={20} />
               Kembali ke Formulir
             </button>
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-[#202124]">Data Registrasi</h1>
-              <button
-                onClick={handleLogout}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
-                aria-label="Logout"
-                title="Logout"
-              >
-                <LogOut size={16} />
-              </button>
+            <button
+              onClick={handleLogout}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
+            <div className="h-2 bg-[#7A1F2B]" />
+            <div className="p-6 md:p-8">
+              <h1 className="text-3xl md:text-4xl font-bold text-[#202124] mb-3">Data Registrasi</h1>
+              <p className="text-gray-600 leading-relaxed">
+                Daftar peserta yang telah mengisi formulir pendaftaran acara Ramadhan Careem.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleDownloadExcel}
+                  disabled={isExportingExcel || submissions.length === 0}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#7A1F2B] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#651823] disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {isExportingExcel ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  {isExportingExcel ? "Memproses..." : "Download Excel"}
+                </button>
+                <a
+                  href={GOOGLE_SHEET_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#7A1F2B]/20 px-4 py-2.5 text-sm font-semibold text-[#7A1F2B] transition-colors hover:bg-[#7A1F2B]/5"
+                >
+                  <ExternalLink size={16} />
+                  Buka Spreadsheet
+                </a>
+              </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+          <FormSection title="Daftar Pendaftar" icon={<Users className="text-[#7A1F2B]" size={20} />}>
+            <div className="overflow-x-auto -mx-6 md:-mx-8">
+              <table className="w-full min-w-[860px] text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 border-bottom border-gray-200">
+                  <tr className="bg-gray-50 border-y border-gray-200">
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nama</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Organisasi</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Jabatan</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kendaraan</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Bukti</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tanggal</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {submissions.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-gray-400 italic">
+                      <td colSpan={5} className="p-8 text-center text-gray-400 italic">
                         Belum ada data masuk
                       </td>
                     </tr>
@@ -718,9 +867,6 @@ export default function App() {
                     submissions.map((sub) => (
                       <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
                         <td className="p-4 text-sm text-gray-900 font-medium">{sub.name}</td>
-                        <td className="p-4 text-sm text-gray-600">{sub.email}</td>
-                        <td className="p-4 text-sm text-gray-600">{sub.organization || "-"}</td>
-                        <td className="p-4 text-sm text-gray-600">{sub.role || "-"}</td>
                         <td className="p-4 text-sm text-gray-600">
                           {sub.vehicle_type === "non_kendaraan"
                             ? "Non Kendaraan"
@@ -749,13 +895,29 @@ export default function App() {
                             year: "numeric",
                           })}
                         </td>
+                        <td className="p-4 text-sm text-gray-600">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubmission(sub.id)}
+                            disabled={deletingSubmissionId === sub.id}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                            aria-label={`Hapus pendaftar ${sub.name}`}
+                            title="Hapus pendaftar"
+                          >
+                            {deletingSubmissionId === sub.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
+          </FormSection>
         </div>
       </div>
     );
@@ -900,7 +1062,7 @@ export default function App() {
                 <div className="h-2 bg-[#7A1F2B]" />
                 <div className="p-6 md:p-8">
                   <h1 className="text-3xl md:text-4xl font-bold text-[#202124] mb-4">
-                    Marhaban ya Ramadhan Careem
+                    Ramadhan Careem Vol 4
                   </h1>
                   <p className="text-gray-600 leading-relaxed">
                     Silakan lengkapi data diri Anda untuk mendaftar pada acara Ramadhan mendatang. Pastikan
@@ -924,7 +1086,7 @@ export default function App() {
                         <p className="text-xs sm:text-sm font-medium uppercase tracking-wider opacity-80 mb-1">
                           Ramadhan Special Event
                         </p>
-                        <h3 className="text-base sm:text-xl font-bold">Buka Bersama & Berbagi 2026</h3>
+                        <h3 className="text-base sm:text-xl font-bold">Buka Bersama & Berbagi Takjil</h3>
                       </div>
                     </div>
                   </div>
@@ -955,14 +1117,6 @@ export default function App() {
                       error={errors.name?.message}
                       {...register("name")}
                       placeholder="Masukkan nama lengkap Anda"
-                    />
-                    <InputField
-                      label="Alamat Email"
-                      required
-                      type="email"
-                      error={errors.email?.message}
-                      {...register("email")}
-                      placeholder="contoh@email.com"
                     />
                     <InputField
                       label="Nomor WhatsApp"
@@ -1120,15 +1274,25 @@ export default function App() {
                 </div>
                 <h2 className="text-3xl font-bold text-[#202124] mb-4">Pendaftaran Berhasil!</h2>
                 <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                  Terima kasih telah mendaftar. Kami telah menerima data Anda dan akan segera menghubungi melalui
-                  email untuk informasi selanjutnya.
+                  Pendaftaran berhasil dikirim. Silakan cek riwayat pendaftaran Anda di menu Profile.
                 </p>
-                <button
-                  onClick={() => setIsSubmitted(false)}
-                  className="text-[#7A1F2B] font-semibold hover:underline"
-                >
-                  Kirim tanggapan lain
-                </button>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    onClick={() => {
+                      setIsSubmitted(false);
+                      handleOpenProfile();
+                    }}
+                    className="bg-[#7A1F2B] hover:bg-[#651823] text-white px-6 py-2.5 rounded-lg font-semibold transition-colors"
+                  >
+                    Cek Riwayat di Profile
+                  </button>
+                  <button
+                    onClick={() => setIsSubmitted(false)}
+                    className="text-[#7A1F2B] font-semibold hover:underline"
+                  >
+                    Kirim tanggapan lain
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1192,4 +1356,3 @@ const InputField = React.forwardRef<
 });
 
 InputField.displayName = "InputField";
-
