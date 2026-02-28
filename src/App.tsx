@@ -201,10 +201,10 @@ export default function App() {
                       />
                       Your browser does not support the video tag.
                     </video>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-6">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-4 sm:p-6">
                       <div className="text-white">
-                        <p className="text-sm font-medium uppercase tracking-wider opacity-80 mb-1">Ramadhan Special Event</p>
-                        <h3 className="text-xl font-bold">Buka Bersama & Berbagi 2026</h3>
+                        <p className="text-xs sm:text-sm font-medium uppercase tracking-wider opacity-80 mb-1">Ramadhan Special Event</p>
+                        <h3 className="text-base sm:text-xl font-bold">Buka Bersama & Berbagi 2026</h3>
                       </div>
                     </div>
                   </div>
