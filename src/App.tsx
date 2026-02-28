@@ -578,7 +578,7 @@ export default function App() {
 
   if (!isAuthReady) {
     return (
-      <div className="min-h-screen bg-[#F0EBF8] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#F8EFF1] flex items-center justify-center px-4">
         <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 text-gray-600 text-sm">
           Memuat sesi login...
         </div>
@@ -588,9 +588,9 @@ export default function App() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-[#F0EBF8] flex items-center justify-center px-4 py-8">
+      <div className="min-h-screen bg-[#F8EFF1] flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="h-2 bg-[#673AB7]" />
+          <div className="h-2 bg-[#7A1F2B]" />
           <div className="p-6 md:p-8">
             <h1 className="text-2xl font-bold text-[#202124] mb-2">
               {authMode === "login" ? "Login Diperlukan" : "Buat Akun Baru"}
@@ -623,12 +623,12 @@ export default function App() {
                     onChange={(e) => setAuthPassword(e.target.value)}
                     autoComplete={authMode === "login" ? "current-password" : "new-password"}
                     placeholder="Minimal 6 karakter"
-                    className="w-full p-3 pr-12 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#673AB7]/20 focus:border-[#673AB7] outline-none transition-all"
+                    className="w-full p-3 pr-12 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7A1F2B]/20 focus:border-[#7A1F2B] outline-none transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowAuthPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-[#673AB7] transition-colors"
+                    className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-[#7A1F2B] transition-colors"
                     aria-label={showAuthPassword ? "Sembunyikan password" : "Tampilkan password"}
                   >
                     {showAuthPassword ? <Eye size={18} /> : <EyeOff size={18} />}
@@ -641,7 +641,7 @@ export default function App() {
               <button
                 type="submit"
                 disabled={isAuthLoading}
-                className="w-full bg-[#673AB7] hover:bg-[#5E35B1] disabled:bg-gray-400 text-white py-3 rounded-lg font-semibold transition-colors"
+                className="w-full bg-[#7A1F2B] hover:bg-[#651823] disabled:bg-gray-400 text-white py-3 rounded-lg font-semibold transition-colors"
               >
                 {isAuthLoading
                   ? "Memproses..."
@@ -657,7 +657,7 @@ export default function App() {
                   setAuthError("");
                   setAuthMessage("");
                 }}
-                className="w-full text-sm text-[#673AB7] hover:underline"
+                className="w-full text-sm text-[#7A1F2B] hover:underline"
               >
                 {authMode === "login" ? "Belum punya akun? Signup" : "Sudah punya akun? Login"}
               </button>
@@ -670,12 +670,12 @@ export default function App() {
 
   if (showAdmin) {
     return (
-      <div className="min-h-screen bg-[#F0EBF8] py-8 px-4">
+      <div className="min-h-screen bg-[#F8EFF1] py-8 px-4">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <button
               onClick={() => setShowAdmin(false)}
-              className="flex items-center gap-2 text-[#673AB7] hover:text-[#5E35B1] font-medium transition-colors"
+              className="flex items-center gap-2 text-[#7A1F2B] hover:text-[#651823] font-medium transition-colors"
             >
               <ArrowLeft size={20} />
               Kembali ke Formulir
@@ -684,7 +684,7 @@ export default function App() {
               <h1 className="text-2xl font-bold text-[#202124]">Data Registrasi</h1>
               <button
                 onClick={handleLogout}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
                 aria-label="Logout"
                 title="Logout"
               >
@@ -734,7 +734,7 @@ export default function App() {
                               href={sub.transfer_proof}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-[#673AB7] hover:underline"
+                              className="text-[#7A1F2B] hover:underline"
                             >
                               Lihat
                             </a>
@@ -767,12 +767,12 @@ export default function App() {
     const profileLastSignInAt = accountProfile?.last_sign_in_at ?? session.user.last_sign_in_at ?? null;
 
     return (
-      <div className="min-h-screen bg-[#F0EBF8] py-8 px-4">
+      <div className="min-h-screen bg-[#F8EFF1] py-8 px-4">
         <div className="max-w-5xl mx-auto space-y-4">
           <div className="flex items-center justify-between mb-2">
             <button
               onClick={() => setShowProfile(false)}
-              className="flex items-center gap-2 text-[#673AB7] hover:text-[#5E35B1] font-medium transition-colors"
+              className="flex items-center gap-2 text-[#7A1F2B] hover:text-[#651823] font-medium transition-colors"
             >
               <ArrowLeft size={20} />
               Kembali ke Formulir
@@ -781,7 +781,7 @@ export default function App() {
               <h1 className="text-2xl font-bold text-[#202124]">Profil Akun</h1>
               <button
                 onClick={handleLogout}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
                 aria-label="Logout"
                 title="Logout"
               >
@@ -792,7 +792,7 @@ export default function App() {
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center gap-3">
-              <UserRound className="text-[#673AB7]" size={20} />
+              <UserRound className="text-[#7A1F2B]" size={20} />
               <h3 className="font-semibold text-gray-800">Informasi Akun</h3>
             </div>
             <div className="p-6 md:p-8 grid gap-4 md:grid-cols-2">
@@ -804,7 +804,7 @@ export default function App() {
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex items-center gap-3">
-              <Clock3 className="text-[#673AB7]" size={20} />
+              <Clock3 className="text-[#7A1F2B]" size={20} />
               <h3 className="font-semibold text-gray-800">Riwayat Pengisian Form</h3>
             </div>
 
@@ -843,7 +843,7 @@ export default function App() {
                           href={submission.transfer_proof}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-sm text-[#673AB7] hover:underline"
+                          className="text-sm text-[#7A1F2B] hover:underline"
                         >
                           Lihat gambar
                         </a>
@@ -862,15 +862,15 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0EBF8] pb-12">
+    <div className="min-h-screen bg-[#F8EFF1] pb-12">
       {/* Google Forms Style Header Accent */}
-      <div className="h-2.5 bg-[#673AB7] w-full sticky top-0 z-10" />
+      <div className="h-2.5 bg-[#7A1F2B] w-full sticky top-0 z-10" />
 
       <div className="max-w-3xl mx-auto px-4 pt-8">
         <div className="flex justify-end gap-2 mb-4">
           <button
             onClick={handleOpenProfile}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
             aria-label="Profile"
             title="Profile"
           >
@@ -878,7 +878,7 @@ export default function App() {
           </button>
           <button
             onClick={handleLogout}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#673AB7] hover:border-[#673AB7]/30 transition-colors"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
             aria-label="Logout"
             title="Logout"
           >
@@ -897,7 +897,7 @@ export default function App() {
             >
               {/* Header Card */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
-                <div className="h-2 bg-[#673AB7]" />
+                <div className="h-2 bg-[#7A1F2B]" />
                 <div className="p-6 md:p-8">
                   <h1 className="text-3xl md:text-4xl font-bold text-[#202124] mb-4">
                     Marhaban ya Ramadhan Careem
@@ -934,7 +934,7 @@ export default function App() {
                     {isAdmin ? (
                       <button
                         onClick={handleOpenAdmin}
-                        className="text-xs text-gray-400 hover:text-[#673AB7] transition-colors flex items-center gap-1"
+                        className="text-xs text-gray-400 hover:text-[#7A1F2B] transition-colors flex items-center gap-1"
                       >
                         <Users size={14} />
                         Admin View
@@ -947,7 +947,7 @@ export default function App() {
               {/* Form Content */}
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 {/* Name Field */}
-                <FormSection title="Data Pribadi" icon={<User className="text-[#673AB7]" size={20} />}>
+                <FormSection title="Data Pribadi" icon={<User className="text-[#7A1F2B]" size={20} />}>
                   <div className="space-y-6">
                     <InputField
                       label="Nama Lengkap"
@@ -974,7 +974,7 @@ export default function App() {
                   </div>
                 </FormSection>
 
-                <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#673AB7]" size={20} />}>
+                <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#7A1F2B]" size={20} />}>
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700">
                       Pilih kendaraan yang digunakan <span className="text-red-500">*</span>
@@ -1026,18 +1026,18 @@ export default function App() {
                             className={cn(
                               "rounded-2xl border p-4 text-left transition-all",
                               isSelected &&
-                                "border-[#673AB7] bg-gradient-to-br from-[#673AB7]/10 to-white ring-2 ring-[#673AB7]/20 shadow-sm",
-                              !isSelected && !isFull && "border-gray-200 bg-white hover:border-[#673AB7]/40 hover:shadow-sm",
+                                "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
+                              !isSelected && !isFull && "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
                               isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
                             )}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className={cn("text-[#673AB7]", isFull && "text-gray-400")}>{option.icon}</span>
+                                <span className={cn("text-[#7A1F2B]", isFull && "text-gray-400")}>{option.icon}</span>
                                 <p className="font-semibold">{option.label}</p>
                               </div>
                               {isSelected ? (
-                                <span className="text-[11px] font-semibold text-[#673AB7] bg-[#673AB7]/10 px-2 py-1 rounded-full">
+                                <span className="text-[11px] font-semibold text-[#7A1F2B] bg-[#7A1F2B]/10 px-2 py-1 rounded-full">
                                   Dipilih
                                 </span>
                               ) : null}
@@ -1045,7 +1045,7 @@ export default function App() {
                             <p className="mt-2 text-xs text-gray-500">{option.description}</p>
 
                             {isLimitedOption && availability ? (
-                              <p className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#673AB7]")}>
+                              <p className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#7A1F2B]")}>
                                 {isFull ? "Kuota penuh" : `Sisa ${availability.remaining} slot`}
                               </p>
                             ) : (
@@ -1061,7 +1061,7 @@ export default function App() {
                   </div>
                 </FormSection>
 
-                <FormSection title="Bukti Transfer" icon={<ReceiptText className="text-[#673AB7]" size={20} />}>
+                <FormSection title="Bukti Transfer" icon={<ReceiptText className="text-[#7A1F2B]" size={20} />}>
                   <div className="space-y-3">
                     <input type="hidden" {...register("transferProof")} />
                     <label className="block text-sm font-medium text-gray-700">
@@ -1073,7 +1073,7 @@ export default function App() {
                       accept="image/*"
                       onChange={handleTransferProofChange}
                       className={cn(
-                        "w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#673AB7] file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-[#5E35B1]",
+                        "w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#7A1F2B] file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-[#651823]",
                         errors.transferProof && "border-red-500",
                       )}
                     />
@@ -1092,7 +1092,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="bg-[#673AB7] hover:bg-[#5E35B1] disabled:bg-gray-400 text-white px-8 py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 group"
+                    className="bg-[#7A1F2B] hover:bg-[#651823] disabled:bg-gray-400 text-white px-8 py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 group"
                   >
                     {isLoading ? (
                       <Loader2 className="animate-spin" size={20} />
@@ -1113,7 +1113,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
             >
-              <div className="h-2 bg-[#673AB7]" />
+              <div className="h-2 bg-[#7A1F2B]" />
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-20 h-20 bg-green-50 rounded-full mb-6">
                   <CheckCircle2 className="text-green-500" size={48} />
@@ -1125,7 +1125,7 @@ export default function App() {
                 </p>
                 <button
                   onClick={() => setIsSubmitted(false)}
-                  className="text-[#673AB7] font-semibold hover:underline"
+                  className="text-[#7A1F2B] font-semibold hover:underline"
                 >
                   Kirim tanggapan lain
                 </button>
@@ -1180,7 +1180,7 @@ const InputField = React.forwardRef<
       <input
         ref={ref}
         className={cn(
-          "w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#673AB7]/20 focus:border-[#673AB7] outline-none transition-all",
+          "w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7A1F2B]/20 focus:border-[#7A1F2B] outline-none transition-all",
           error && "border-red-500 focus:ring-red-500/20 focus:border-red-500",
           className,
         )}
@@ -1192,3 +1192,4 @@ const InputField = React.forwardRef<
 });
 
 InputField.displayName = "InputField";
+
