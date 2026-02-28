@@ -67,6 +67,7 @@ interface AccountProfile {
 type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
+const TRANSFER_PROOF_BUCKET = "bukti-transfer";
 const GOOGLE_SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1jWHcaUyJf0zhUxYp4US9KfDYRervAKUJZ1jETJ-jkro/edit?hl=id&gid=0#gid=0";
 
@@ -117,13 +118,16 @@ function buildVehicleAvailability(mobilUsed: number, motorUsed: number): Vehicle
   };
 }
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(reader.error ?? new Error("Gagal membaca file."));
-    reader.readAsDataURL(file);
-  });
+function isDataImageUrl(value: string) {
+  return value.startsWith("data:image/");
+}
+
+function isHttpUrl(value: string) {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function isStorageObjectPath(value: string) {
+  return Boolean(value) && !isDataImageUrl(value) && !isHttpUrl(value) && !value.startsWith("blob:");
 }
 
 function mapAuthErrorMessage(message: string, mode: AuthMode) {
@@ -187,7 +191,9 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [transferProofFile, setTransferProofFile] = useState<File | null>(null);
   const [transferProofName, setTransferProofName] = useState("");
+  const [transferProofLinks, setTransferProofLinks] = useState<Record<string, string>>({});
   const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability>(
     DEFAULT_VEHICLE_AVAILABILITY,
   );
@@ -212,12 +218,14 @@ export default function App() {
   const handleTransferProofChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
+      setTransferProofFile(null);
       setTransferProofName("");
       setValue("transferProof", "", { shouldValidate: true });
       return;
     }
 
     if (!file.type.startsWith("image/")) {
+      setTransferProofFile(null);
       setTransferProofName("");
       setValue("transferProof", "", { shouldValidate: true });
       setError("transferProof", {
@@ -229,6 +237,7 @@ export default function App() {
     }
 
     if (file.size > MAX_TRANSFER_PROOF_SIZE_BYTES) {
+      setTransferProofFile(null);
       setTransferProofName("");
       setValue("transferProof", "", { shouldValidate: true });
       setError("transferProof", {
@@ -240,27 +249,55 @@ export default function App() {
     }
 
     try {
-      const fileDataUrl = await readFileAsDataUrl(file);
-      if (!fileDataUrl) {
-        throw new Error("File data kosong.");
-      }
-
+      setTransferProofFile(file);
       setTransferProofName(file.name);
-      setValue("transferProof", fileDataUrl, {
+      setValue("transferProof", file.name, {
         shouldDirty: true,
         shouldValidate: true,
       });
       clearErrors("transferProof");
     } catch (error) {
-      console.error("Failed to parse transfer proof image:", error);
+      console.error("Failed to store transfer proof file:", error);
+      setTransferProofFile(null);
       setTransferProofName("");
       setValue("transferProof", "", { shouldValidate: true });
       setError("transferProof", {
         type: "manual",
-        message: "Gagal membaca file. Silakan pilih ulang gambar.",
+        message: "Gagal memproses file. Silakan pilih ulang gambar.",
       });
       event.target.value = "";
     }
+  };
+
+  const uploadTransferProofToStorage = async (file: File, userId: string) => {
+    const extension = (file.name.split(".").pop() ?? "jpg").toLowerCase();
+    const safeExtension = /^[a-z0-9]+$/.test(extension) ? extension : "jpg";
+    const randomSuffix = Math.random().toString(36).slice(2, 10);
+    const filePath = `${userId}/${Date.now()}-${randomSuffix}.${safeExtension}`;
+
+    const { error } = await supabase.storage.from(TRANSFER_PROOF_BUCKET).upload(filePath, file, {
+      upsert: false,
+      contentType: file.type || "image/jpeg",
+      cacheControl: "3600",
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return filePath;
+  };
+
+  const getTransferProofHref = (transferProofValue: string) => {
+    if (!transferProofValue) {
+      return "";
+    }
+
+    if (isDataImageUrl(transferProofValue) || isHttpUrl(transferProofValue) || transferProofValue.startsWith("blob:")) {
+      return transferProofValue;
+    }
+
+    return transferProofLinks[transferProofValue] ?? "";
   };
 
   useEffect(() => {
@@ -314,6 +351,9 @@ export default function App() {
     setSubmissions([]);
     setMySubmissions([]);
     setAccountProfile(null);
+    setTransferProofFile(null);
+    setTransferProofName("");
+    setTransferProofLinks({});
     setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
     setSession(null);
     await supabase.auth.signOut({ scope: "local" });
@@ -326,6 +366,9 @@ export default function App() {
     setSubmissions([]);
     setMySubmissions([]);
     setAccountProfile(null);
+    setTransferProofFile(null);
+    setTransferProofName("");
+    setTransferProofLinks({});
     setAuthError("");
     setAuthMessage("");
     setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
@@ -415,8 +458,40 @@ export default function App() {
       return;
     }
 
+    const sessionUserId = session?.user?.id ?? "";
+    const sessionUserEmail = session?.user?.email ?? "";
+    if (!sessionUserId || !sessionUserEmail) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!transferProofFile) {
+      setError("transferProof", {
+        type: "manual",
+        message: "Bukti transfer wajib diunggah.",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
+      let uploadedTransferProofPath = "";
+      try {
+        uploadedTransferProofPath = await uploadTransferProofToStorage(transferProofFile, sessionUserId);
+      } catch (uploadError) {
+        console.error("Upload transfer proof failed:", uploadError);
+        setError("transferProof", {
+          type: "manual",
+          message: "Upload bukti transfer gagal. Coba lagi.",
+        });
+        return;
+      }
+
+      const submissionPayload = {
+        ...data,
+        transferProof: uploadedTransferProofPath,
+      };
+
       const accessToken = await getAccessToken();
       if (!accessToken) {
         await handleUnauthorized();
@@ -429,17 +504,10 @@ export default function App() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(submissionPayload),
       });
 
       if (response.status === 404) {
-        const sessionUserId = session?.user?.id ?? "";
-        const sessionUserEmail = session?.user?.email ?? "";
-        if (!sessionUserId || !sessionUserEmail) {
-          await handleUnauthorized();
-          return;
-        }
-
         const [mobilUsage, motorUsage] = await Promise.all([
           supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "mobil"),
           supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "motor"),
@@ -473,7 +541,7 @@ export default function App() {
           organization: data.organization ?? "",
           role: data.role ?? "",
           vehicle_type: data.vehicleType,
-          transfer_proof: data.transferProof,
+          transfer_proof: uploadedTransferProofPath,
         });
 
         if (insertError) {
@@ -483,6 +551,7 @@ export default function App() {
 
         setIsSubmitted(true);
         reset();
+        setTransferProofFile(null);
         setTransferProofName("");
         if (transferProofInputRef.current) {
           transferProofInputRef.current.value = "";
@@ -509,6 +578,7 @@ export default function App() {
       if (response.ok) {
         setIsSubmitted(true);
         reset();
+        setTransferProofFile(null);
         setTransferProofName("");
         if (transferProofInputRef.current) {
           transferProofInputRef.current.value = "";
@@ -705,8 +775,6 @@ export default function App() {
         Nama: sub.name || "-",
         Email: sub.email || "-",
         WhatsApp: sub.phone || "-",
-        Organisasi: sub.organization || "-",
-        Jabatan: sub.role || "-",
         Kendaraan: getVehicleTypeLabel(sub.vehicle_type),
         "Bukti Transfer": sub.transfer_proof ? "Ada" : "Tidak",
         Tanggal: formatDateTime(sub.created_at),
@@ -718,8 +786,6 @@ export default function App() {
         { wch: 24 },
         { wch: 28 },
         { wch: 18 },
-        { wch: 24 },
-        { wch: 20 },
         { wch: 16 },
         { wch: 14 },
         { wch: 24 },
@@ -880,6 +946,50 @@ export default function App() {
       fetchVehicleAvailability();
     }
   }, [session]);
+
+  useEffect(() => {
+    const allTransferProofValues = [...submissions, ...mySubmissions]
+      .map((submission) => submission.transfer_proof)
+      .filter((value): value is string => Boolean(value));
+
+    const uniqueValues = Array.from(new Set(allTransferProofValues));
+    const unresolvedPaths = uniqueValues.filter(
+      (value) => isStorageObjectPath(value) && !transferProofLinks[value],
+    );
+
+    if (unresolvedPaths.length === 0) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveSignedUrls = async () => {
+      const resolvedLinks: Record<string, string> = {};
+      await Promise.all(
+        unresolvedPaths.map(async (path) => {
+          const { data, error } = await supabase.storage.from(TRANSFER_PROOF_BUCKET).createSignedUrl(path, 60 * 60);
+          if (!error && data?.signedUrl) {
+            resolvedLinks[path] = data.signedUrl;
+          }
+        }),
+      );
+
+      if (!isCancelled && Object.keys(resolvedLinks).length > 0) {
+        setTransferProofLinks((prev) => ({
+          ...prev,
+          ...resolvedLinks,
+        }));
+      }
+    };
+
+    resolveSignedUrls().catch((error) => {
+      console.error("Failed to resolve transfer proof links:", error);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [submissions, mySubmissions, transferProofLinks]);
 
   const handleOpenProfile = () => {
     setShowAdmin(false);
@@ -1073,14 +1183,18 @@ export default function App() {
                         </td>
                         <td className="p-4 text-sm text-gray-600">
                           {sub.transfer_proof ? (
-                            <a
-                              href={sub.transfer_proof}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#7A1F2B] hover:underline"
-                            >
-                              Lihat
-                            </a>
+                            getTransferProofHref(sub.transfer_proof) ? (
+                              <a
+                                href={getTransferProofHref(sub.transfer_proof)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#7A1F2B] hover:underline"
+                              >
+                                Lihat
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400">Memuat...</span>
+                            )
                           ) : (
                             "-"
                           )}
@@ -1190,22 +1304,22 @@ export default function App() {
                         <span className="font-medium text-gray-800">Kendaraan:</span>{" "}
                         {getVehicleTypeLabel(submission.vehicle_type)}
                       </p>
-                      <p>
-                        <span className="font-medium text-gray-800">Organisasi:</span>{" "}
-                        {submission.organization || "-"}
-                      </p>
                     </div>
                     <div className="mt-3">
                       <span className="text-sm font-medium text-gray-800">Bukti transfer: </span>
                       {submission.transfer_proof ? (
-                        <a
-                          href={submission.transfer_proof}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm text-[#7A1F2B] hover:underline"
-                        >
-                          Lihat gambar
-                        </a>
+                        getTransferProofHref(submission.transfer_proof) ? (
+                          <a
+                            href={getTransferProofHref(submission.transfer_proof)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-[#7A1F2B] hover:underline"
+                          >
+                            Lihat gambar
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-400">Memuat...</span>
+                        )
                       ) : (
                         <span className="text-sm text-gray-500">-</span>
                       )}

@@ -315,11 +315,19 @@ async function startServer() {
       }
     }
 
-    if (typeof transferProof !== "string" || !transferProof.startsWith("data:image/")) {
+    if (typeof transferProof !== "string" || transferProof.trim().length === 0) {
       return res.status(400).json({ error: "Invalid transfer proof format" });
     }
 
-    if (transferProof.length > MAX_TRANSFER_PROOF_DATA_LENGTH) {
+    const isDataUrl = transferProof.startsWith("data:image/");
+    const isHttpUrl = transferProof.startsWith("http://") || transferProof.startsWith("https://");
+    const isStoragePath = !transferProof.includes("://") && !transferProof.startsWith("data:") && transferProof.includes("/");
+
+    if (!isDataUrl && !isHttpUrl && !isStoragePath) {
+      return res.status(400).json({ error: "Invalid transfer proof format" });
+    }
+
+    if (isDataUrl && transferProof.length > MAX_TRANSFER_PROOF_DATA_LENGTH) {
       return res.status(413).json({ error: "Transfer proof image is too large" });
     }
 
