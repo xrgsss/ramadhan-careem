@@ -15,6 +15,9 @@ View your app in AI Studio: https://ai.studio/apps/459e192f-0e17-468e-b388-e7fb4
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create `.env.local` and set:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 3. Run the app:
    `npm run dev`
+4. Buka aplikasi, lalu gunakan menu `Signup` untuk membuat akun baru sebelum isi formulir.
