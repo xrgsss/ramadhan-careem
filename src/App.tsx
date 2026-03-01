@@ -67,6 +67,8 @@ type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
 const TRANSFER_PROOF_BUCKET = "bukti-transfer";
+const REGISTRATION_DEADLINE_MS = new Date("2026-03-08T15:00:00+07:00").getTime();
+const REGISTRATION_DEADLINE_TEXT = "8 Maret 2026, 15:00 WIB";
 
 interface VehicleAvailability {
   mobil: {
@@ -91,6 +93,21 @@ const DEFAULT_VEHICLE_AVAILABILITY: VehicleAvailability = {
   motor: { limit: 20, used: 0, remaining: 20, isFull: false },
   non_kendaraan: { isFull: false },
 };
+
+function getCountdownParts(remainingMs: number) {
+  const safeRemainingMs = Math.max(0, remainingMs);
+  const totalSeconds = Math.floor(safeRemainingMs / 1000);
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+  const seconds = totalSeconds % 60;
+
+  return { days, hours, minutes, seconds };
+}
+
+function formatCountdownUnit(value: number) {
+  return value.toString().padStart(2, "0");
+}
 
 function buildVehicleAvailability(mobilUsed: number, motorUsed: number): VehicleAvailability {
   const mobilLimit = DEFAULT_VEHICLE_AVAILABILITY.mobil.limit;
@@ -188,15 +205,19 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [mustLoginAfterSignup, setMustLoginAfterSignup] = useState(false);
   const [transferProofFile, setTransferProofFile] = useState<File | null>(null);
   const [transferProofName, setTransferProofName] = useState("");
   const [transferProofLinks, setTransferProofLinks] = useState<Record<string, string>>({});
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
   const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability>(
     DEFAULT_VEHICLE_AVAILABILITY,
   );
   const transferProofInputRef = useRef<HTMLInputElement>(null);
   const heroVideoSrc = "/hero/hero-ramadhan.mp4";
   const isAdmin = (session?.user?.email ?? "").toLowerCase() === ADMIN_EMAIL;
+  const isRegistrationClosed = currentTimestamp >= REGISTRATION_DEADLINE_MS;
+  const countdown = getCountdownParts(REGISTRATION_DEADLINE_MS - currentTimestamp);
 
   const {
     register,
@@ -341,7 +362,8 @@ export default function App() {
   };
 
   const handleUnauthorized = async () => {
-    setAuthError("Sesi login Anda berakhir. Silakan login kembali.");
+    setAuthError("");
+    setMustLoginAfterSignup(false);
     setShowAdmin(false);
     setShowProfile(false);
     setIsSubmitted(false);
@@ -357,6 +379,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    setMustLoginAfterSignup(false);
     setShowAdmin(false);
     setShowProfile(false);
     setIsSubmitted(false);
@@ -408,6 +431,7 @@ export default function App() {
           return;
         }
 
+        setMustLoginAfterSignup(false);
         setAuthPassword("");
         setAuthMessage("Login berhasil.");
         return;
@@ -426,12 +450,13 @@ export default function App() {
       setAuthPassword("");
       setShowAuthPassword(false);
       setAuthMode("login");
+      setMustLoginAfterSignup(true);
 
       // Signup must not grant direct access to the form.
       if (data.session) {
-        await supabase.auth.signOut();
-        setSession(null);
+        await supabase.auth.signOut({ scope: "local" });
       }
+      setSession(null);
 
       setAuthMessage(
         data.session
@@ -447,6 +472,11 @@ export default function App() {
   };
 
   const onSubmit = async (data: FormData) => {
+    if (isRegistrationClosed) {
+      alert(`Pendaftaran sudah ditutup pada ${REGISTRATION_DEADLINE_TEXT}.`);
+      return;
+    }
+
     if ((data.vehicleType === "mobil" || data.vehicleType === "motor") && vehicleAvailability[data.vehicleType].isFull) {
       setError("vehicleType", {
         type: "manual",
@@ -945,6 +975,16 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTimestamp(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
     const allTransferProofValues = [...submissions, ...mySubmissions]
       .map((submission) => submission.transfer_proof)
       .filter((value): value is string => Boolean(value));
@@ -1012,7 +1052,7 @@ export default function App() {
     );
   }
 
-  if (!session) {
+  if (!session || mustLoginAfterSignup) {
     return (
       <div className="min-h-screen bg-[#F8EFF1] flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1355,6 +1395,40 @@ export default function App() {
           </button>
         </div>
 
+        <div
+          className={cn(
+            "mb-4 rounded-xl border px-5 py-4 shadow-sm",
+            isRegistrationClosed ? "border-red-200 bg-red-50" : "border-[#7A1F2B]/20 bg-white",
+          )}
+        >
+          <p className={cn("text-sm font-semibold", isRegistrationClosed ? "text-red-700" : "text-[#7A1F2B]")}>
+            Hitung Mundur Pendaftaran
+          </p>
+          <p className={cn("mt-1 text-xs", isRegistrationClosed ? "text-red-600" : "text-gray-600")}>
+            Form ditutup pada {REGISTRATION_DEADLINE_TEXT}.
+          </p>
+
+          {isRegistrationClosed ? (
+            <p className="mt-3 text-sm font-medium text-red-700">
+              Waktu pendaftaran sudah berakhir. Formulir tidak dapat diisi.
+            </p>
+          ) : (
+            <div className="mt-4 grid grid-cols-4 gap-2 sm:gap-3">
+              {[
+                { label: "Hari", value: countdown.days.toString() },
+                { label: "Jam", value: formatCountdownUnit(countdown.hours) },
+                { label: "Menit", value: formatCountdownUnit(countdown.minutes) },
+                { label: "Detik", value: formatCountdownUnit(countdown.seconds) },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-[#7A1F2B]/15 bg-[#F8EFF1] px-2 py-3 text-center">
+                  <p className="text-xl font-bold text-[#7A1F2B]">{item.value}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <AnimatePresence mode="wait">
           {!isSubmitted ? (
             <motion.div
@@ -1372,7 +1446,7 @@ export default function App() {
                     Ramadhan Careem Vol 4
                   </h1>
                   <p className="text-gray-600 leading-relaxed">
-                    Silakan lengkapi data diri Anda untuk mendaftar pada acara Ramadhan mendatang. Pastikan
+                    Silakan lengkapi data diri Anda untuk mendaftar pada acara Ramadhan Careem. Pastikan
                     informasi yang Anda berikan sudah benar.
                   </p>
 
@@ -1414,158 +1488,178 @@ export default function App() {
               </div>
 
               {/* Form Content */}
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {/* Name Field */}
-                <FormSection title="Data Pribadi" icon={<User className="text-[#7A1F2B]" size={20} />}>
-                  <div className="space-y-6">
-                    <InputField
-                      label="Nama Lengkap"
-                      required
-                      error={errors.name?.message}
-                      {...register("name")}
-                      placeholder="Masukkan nama lengkap Anda"
-                    />
-                    <InputField
-                      label="Nomor WhatsApp"
-                      required
-                      error={errors.phone?.message}
-                      {...register("phone")}
-                      placeholder="0812xxxxxx"
-                    />
-                  </div>
-                </FormSection>
-
-                <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#7A1F2B]" size={20} />}>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Pilih kendaraan yang digunakan <span className="text-red-500">*</span>
-                    </label>
-                    <input type="hidden" {...register("vehicleType")} />
-                    <div className="grid gap-3 md:grid-cols-3">
-                      {[
-                        {
-                          value: "mobil",
-                          label: "Mobil",
-                          description: "Kapasitas maksimal 30 kendaraan",
-                          icon: <Car size={18} />,
-                        },
-                        {
-                          value: "motor",
-                          label: "Motor",
-                          description: "Kapasitas maksimal 20 kendaraan",
-                          icon: <Bike size={18} />,
-                        },
-                        {
-                          value: "non_kendaraan",
-                          label: "Non Kendaraan",
-                          description: "Datang tanpa kendaraan pribadi",
-                          icon: <User size={18} />,
-                        },
-                      ].map((option) => {
-                        const isSelected = selectedVehicleType === option.value;
-                        const isLimitedOption = option.value === "mobil" || option.value === "motor";
-                        const availability =
-                          option.value === "mobil"
-                            ? vehicleAvailability.mobil
-                            : option.value === "motor"
-                              ? vehicleAvailability.motor
-                              : null;
-                        const isFull = isLimitedOption ? Boolean(availability?.isFull) : false;
-
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            disabled={isFull}
-                            onClick={() => {
-                              setValue("vehicleType", option.value, {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              });
-                              clearErrors("vehicleType");
-                            }}
-                            className={cn(
-                              "rounded-2xl border p-4 text-left transition-all",
-                              isSelected &&
-                                "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
-                              !isSelected && !isFull && "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
-                              isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
-                            )}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className={cn("text-[#7A1F2B]", isFull && "text-gray-400")}>{option.icon}</span>
-                                <p className="font-semibold">{option.label}</p>
-                              </div>
-                              {isSelected ? (
-                                <span className="text-[11px] font-semibold text-[#7A1F2B] bg-[#7A1F2B]/10 px-2 py-1 rounded-full">
-                                  Dipilih
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-2 text-xs text-gray-500">{option.description}</p>
-
-                            {isLimitedOption && availability ? (
-                              <p className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#7A1F2B]")}>
-                                {isFull ? "Kuota penuh" : `Sisa ${availability.remaining} slot`}
-                              </p>
-                            ) : (
-                              <p className="mt-3 text-xs font-semibold text-emerald-600">Selalu tersedia</p>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {errors.vehicleType ? (
-                      <p className="text-xs text-red-500">{errors.vehicleType.message}</p>
-                    ) : null}
-                  </div>
-                </FormSection>
-
-                <FormSection title="Bukti Transfer" icon={<ReceiptText className="text-[#7A1F2B]" size={20} />}>
-                  <div className="space-y-3">
-                    <input type="hidden" {...register("transferProof")} />
-                    <label className="block text-sm font-medium text-gray-700">
-                      Upload screenshot bukti transfer <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      ref={transferProofInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleTransferProofChange}
-                      className={cn(
-                        "w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#7A1F2B] file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-[#651823]",
-                        errors.transferProof && "border-red-500",
-                      )}
-                    />
-                    <p className="text-xs text-gray-500">Format gambar, maksimal 5MB.</p>
-                    {transferProofName ? (
-                      <p className="text-xs text-gray-700">File terpilih: {transferProofName}</p>
-                    ) : null}
-                    {errors.transferProof ? (
-                      <p className="text-xs text-red-500">{errors.transferProof.message}</p>
-                    ) : null}
-                  </div>
-                </FormSection>
-
-                {/* Submit Button */}
-                <div className="flex justify-end pt-4 pb-8">
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="bg-[#7A1F2B] hover:bg-[#651823] disabled:bg-gray-400 text-white px-8 py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 group"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="animate-spin" size={20} />
-                    ) : (
-                      <>
-                        Kirim Pendaftaran
-                        <Send size={18} className="group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
-                  </button>
+              {isRegistrationClosed ? (
+                <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-red-700">Pendaftaran sudah ditutup</h3>
+                  <p className="mt-2 text-sm text-red-600">
+                    Formulir tidak dapat diisi setelah {REGISTRATION_DEADLINE_TEXT}.
+                  </p>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                  {/* Name Field */}
+                  <FormSection title="Data Pribadi" icon={<User className="text-[#7A1F2B]" size={20} />}>
+                    <div className="space-y-6">
+                      <InputField
+                        label="Nama Lengkap"
+                        required
+                        error={errors.name?.message}
+                        {...register("name")}
+                        placeholder="Masukkan nama lengkap Anda"
+                      />
+                      <InputField
+                        label="Nomor WhatsApp"
+                        required
+                        error={errors.phone?.message}
+                        {...register("phone")}
+                        placeholder="0812xxxxxx"
+                      />
+                    </div>
+                  </FormSection>
+
+                  <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#7A1F2B]" size={20} />}>
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Pilih kendaraan yang digunakan <span className="text-red-500">*</span>
+                      </label>
+                      <input type="hidden" {...register("vehicleType")} />
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {[
+                          {
+                            value: "mobil",
+                            label: "Mobil",
+                            description: "Kapasitas maksimal 30 kendaraan",
+                            icon: <Car size={18} />,
+                          },
+                          {
+                            value: "motor",
+                            label: "Motor",
+                            description: "Kapasitas maksimal 20 kendaraan",
+                            icon: <Bike size={18} />,
+                          },
+                          {
+                            value: "non_kendaraan",
+                            label: "Non Kendaraan",
+                            description: "Datang tanpa kendaraan pribadi",
+                            icon: <User size={18} />,
+                          },
+                        ].map((option) => {
+                          const isSelected = selectedVehicleType === option.value;
+                          const isLimitedOption = option.value === "mobil" || option.value === "motor";
+                          const availability =
+                            option.value === "mobil"
+                              ? vehicleAvailability.mobil
+                              : option.value === "motor"
+                                ? vehicleAvailability.motor
+                                : null;
+                          const isFull = isLimitedOption ? Boolean(availability?.isFull) : false;
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              disabled={isFull}
+                              onClick={() => {
+                                setValue("vehicleType", option.value, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                                clearErrors("vehicleType");
+                              }}
+                              className={cn(
+                                "rounded-2xl border p-4 text-left transition-all",
+                                isSelected &&
+                                  "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
+                                !isSelected &&
+                                  !isFull &&
+                                  "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
+                                isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className={cn("text-[#7A1F2B]", isFull && "text-gray-400")}>{option.icon}</span>
+                                  <p className="font-semibold">{option.label}</p>
+                                </div>
+                                {isSelected ? (
+                                  <span className="text-[11px] font-semibold text-[#7A1F2B] bg-[#7A1F2B]/10 px-2 py-1 rounded-full">
+                                    Dipilih
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-2 text-xs text-gray-500">{option.description}</p>
+
+                              {isLimitedOption && availability ? (
+                                <p
+                                  className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#7A1F2B]")}
+                                >
+                                  {isFull ? "Kuota penuh" : `Sisa ${availability.remaining} slot`}
+                                </p>
+                              ) : (
+                                <p className="mt-3 text-xs font-semibold text-emerald-600">Selalu tersedia</p>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {errors.vehicleType ? (
+                        <p className="text-xs text-red-500">{errors.vehicleType.message}</p>
+                      ) : null}
+                    </div>
+                  </FormSection>
+
+                  <FormSection title="Bukti Transfer" icon={<ReceiptText className="text-[#7A1F2B]" size={20} />}>
+                    <div className="space-y-3">
+                      <input type="hidden" {...register("transferProof")} />
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        Seabank
+                        <br />
+                        a.n Mukhammad Rangga Hari Febrianto
+                        <br />
+                        no rek 901167340597
+                      </p>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload screenshot bukti transfer <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        ref={transferProofInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleTransferProofChange}
+                        className={cn(
+                          "w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#7A1F2B] file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-[#651823]",
+                          errors.transferProof && "border-red-500",
+                        )}
+                      />
+                      <p className="text-xs text-gray-500">Format gambar, maksimal 5MB.</p>
+                      {transferProofName ? (
+                        <p className="text-xs text-gray-700">File terpilih: {transferProofName}</p>
+                      ) : null}
+                      {errors.transferProof ? (
+                        <p className="text-xs text-red-500">{errors.transferProof.message}</p>
+                      ) : null}
+                    </div>
+                  </FormSection>
+
+                  {/* Submit Button */}
+                  <div className="flex justify-end pt-4 pb-8">
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="bg-[#7A1F2B] hover:bg-[#651823] disabled:bg-gray-400 text-white px-8 py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 group"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <>
+                          Kirim Pendaftaran
+                          <Send size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           ) : (
             <motion.div
