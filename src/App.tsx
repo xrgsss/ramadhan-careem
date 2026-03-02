@@ -414,6 +414,7 @@ export default function App() {
 
   const handleUnauthorized = async () => {
     setAuthError("");
+    setRememberMe(false);
     setMustLoginAfterSignup(false);
     setShowAdmin(false);
     setShowProfile(false);
@@ -431,6 +432,7 @@ export default function App() {
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
+    setRememberMe(false);
     setMustLoginAfterSignup(false);
     setShowAdmin(false);
     setShowProfile(false);
@@ -1192,6 +1194,7 @@ export default function App() {
                 label="Email"
                 type="email"
                 required
+                hideAsterisk={true}
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
                 autoComplete="email"
@@ -1199,7 +1202,7 @@ export default function App() {
               />
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Password <span className="text-red-500">*</span>
+                  Password
                 </label>
                 <div className="relative">
                   <input
@@ -1300,7 +1303,12 @@ export default function App() {
 
   if (showAdmin) {
     return (
-      <div className="min-h-screen bg-[#F8EFF1] pb-12">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="min-h-screen bg-[#F8EFF1] pb-12"
+      >
         <div className="h-2.5 bg-[#7A1F2B] w-full sticky top-0 z-10" />
 
         <div className="max-w-3xl mx-auto px-4 pt-8">
@@ -1431,7 +1439,7 @@ export default function App() {
           </FormSection>
         </div>
         {logoutModal}
-      </div>
+      </motion.div>
     );
   }
 
@@ -1441,7 +1449,12 @@ export default function App() {
     const profileLastSignInAt = accountProfile?.last_sign_in_at ?? session.user.last_sign_in_at ?? null;
 
     return (
-      <div className="min-h-screen bg-[#F8EFF1] py-8 px-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="min-h-screen bg-[#F8EFF1] py-8 px-4"
+      >
         <div className="max-w-5xl mx-auto space-y-4">
           <div className="flex items-center justify-between mb-2">
             <button
@@ -1532,12 +1545,17 @@ export default function App() {
           </div>
         </div>
         {logoutModal}
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8EFF1] pb-12">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="min-h-screen bg-[#F8EFF1] pb-12"
+    >
       {/* Google Forms Style Header Accent */}
       <div className="h-2.5 bg-[#7A1F2B] w-full sticky top-0 z-10" />
 
@@ -1866,7 +1884,7 @@ export default function App() {
         </AnimatePresence>
       </div>
       {logoutModal}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1907,12 +1925,12 @@ function ProfileItem({ label, value, className }: { label: string; value: string
 
 const InputField = React.forwardRef<
   HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; required?: boolean }
->(({ label, error, required, className, ...props }, ref) => {
+  React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; required?: boolean; hideAsterisk?: boolean }
+>(({ label, error, required, hideAsterisk, className, ...props }, ref) => {
   return (
     <div className="w-full">
       <label className="block text-sm font-medium text-gray-700 mb-2">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && !hideAsterisk && <span className="text-red-500">*</span>}
       </label>
       <input
         ref={ref}
