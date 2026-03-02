@@ -69,6 +69,10 @@ const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
 const TRANSFER_PROOF_BUCKET = "bukti-transfer";
 const REGISTRATION_DEADLINE_MS = new Date("2026-03-08T15:00:00+07:00").getTime();
 const REGISTRATION_DEADLINE_TEXT = "8 Maret 2026, 15:00 WIB";
+const LOGIN_BUMPER_DURATION_MS = 2200;
+const LOGIN_BUMPER_DURATION_REDUCED_MOTION_MS = 600;
+const LOGIN_BUMPER_LOGO_SRC = "/hero/logo.png";
+const LOGIN_BUMPER_SESSION_KEY = "rc-login-bumper-seen";
 
 interface VehicleAvailability {
   mobil: {
@@ -199,13 +203,27 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authEmail, setAuthEmail] = useState("");
+  const [authEmail, setAuthEmail] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return window.localStorage.getItem("rc-remembered-email") ?? "";
+  });
   const [authPassword, setAuthPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [mustLoginAfterSignup, setMustLoginAfterSignup] = useState(false);
+  const [showLoginBumper, setShowLoginBumper] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return !window.sessionStorage.getItem(LOGIN_BUMPER_SESSION_KEY);
+  });
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoginLogoError, setIsLoginLogoError] = useState(false);
   const [transferProofFile, setTransferProofFile] = useState<File | null>(null);
   const [transferProofName, setTransferProofName] = useState("");
   const [transferProofLinks, setTransferProofLinks] = useState<Record<string, string>>({});
@@ -349,6 +367,39 @@ export default function App() {
     };
   }, []);
 
+  // Bumper logo: ditampilkan saat pertama kali membuka website dalam satu sesi,
+  // terlepas dari status login user.
+  useEffect(() => {
+    const hasSeenLoginBumper =
+      typeof window !== "undefined" && window.sessionStorage.getItem(LOGIN_BUMPER_SESSION_KEY) === "1";
+
+    if (hasSeenLoginBumper) {
+      setShowLoginBumper(false);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(LOGIN_BUMPER_SESSION_KEY, "1");
+    }
+
+    setShowLoginBumper(true);
+
+    const prefersReducedMotion =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const bumperDuration = prefersReducedMotion
+      ? LOGIN_BUMPER_DURATION_REDUCED_MOTION_MS
+      : LOGIN_BUMPER_DURATION_MS;
+
+    const bumperTimer = window.setTimeout(() => {
+      setShowLoginBumper(false);
+    }, bumperDuration);
+
+    return () => {
+      window.clearTimeout(bumperTimer);
+    };
+  }, []);
+
   const getAccessToken = async () => {
     if (session?.access_token) return session.access_token;
 
@@ -379,6 +430,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    setShowLogoutConfirm(false);
     setMustLoginAfterSignup(false);
     setShowAdmin(false);
     setShowProfile(false);
@@ -415,6 +467,11 @@ export default function App() {
       return;
     }
 
+    if (authMode === "login" && !rememberMe) {
+      setAuthError("Anda harus mencentang 'Remember me' untuk bisa login.");
+      return;
+    }
+
     setIsAuthLoading(true);
     setAuthError("");
     setAuthMessage("");
@@ -429,6 +486,12 @@ export default function App() {
         if (error) {
           setAuthError(mapAuthErrorMessage(error.message, "login"));
           return;
+        }
+
+        if (rememberMe) {
+          window.localStorage.setItem("rc-remembered-email", authEmail.trim());
+        } else {
+          window.localStorage.removeItem("rc-remembered-email");
         }
 
         setMustLoginAfterSignup(false);
@@ -1042,6 +1105,63 @@ export default function App() {
     setShowAdmin(true);
   };
 
+  // Bumper logo ditampilkan saat pertama kali membuka website dalam satu sesi peramban
+  if (showLoginBumper) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-[#F8EFF1] px-4 py-8 sm:px-6 lg:px-8">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="login-bumper"
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.06, filter: "blur(8px)" }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center"
+          >
+            <div className="relative w-full max-w-[22rem] overflow-hidden rounded-3xl border border-[#7A1F2B]/15 bg-white/90 px-8 py-10 text-center shadow-xl backdrop-blur-sm sm:max-w-md sm:px-10 sm:py-12">
+              <div className="pointer-events-none absolute inset-x-5 top-0 h-[3px] rounded-full bg-gradient-to-r from-[#7A1F2B]/20 via-[#7A1F2B] to-[#7A1F2B]/20" />
+              <motion.div
+                initial={{ opacity: 0.85, scale: 0.9 }}
+                animate={{ opacity: 1, scale: [0.96, 1.02, 1] }}
+                transition={{ duration: 1.25, times: [0, 0.55, 1], ease: "easeInOut" }}
+                className="mx-auto flex h-32 w-32 items-center justify-center sm:h-36 sm:w-36"
+              >
+                {isLoginLogoError ? (
+                  <div className="flex h-full w-full items-center justify-center rounded-2xl bg-[#7A1F2B] text-2xl font-bold text-white">
+                    RC
+                  </div>
+                ) : (
+                  <img
+                    src={LOGIN_BUMPER_LOGO_SRC}
+                    alt="Logo acara"
+                    onError={() => setIsLoginLogoError(true)}
+                    className="h-full w-full object-contain"
+                  />
+                )}
+              </motion.div>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+                className="mt-5 text-base font-semibold text-[#7A1F2B] sm:text-lg"
+              >
+                Ramadhan Careem Vol 4
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.33, duration: 0.45 }}
+                className="mt-1 text-sm text-gray-600"
+              >
+                Menyiapkan halaman...
+              </motion.p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    );
+  }
+
   if (!isAuthReady) {
     return (
       <div className="min-h-screen bg-[#F8EFF1] flex items-center justify-center px-4">
@@ -1101,6 +1221,19 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {authMode === "login" && (
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) => setRememberMe(event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#7A1F2B] focus:ring-[#7A1F2B]"
+                  />
+                  remember me
+                </label>
+              )}
+
               {authError && <p className="text-sm text-red-500">{authError}</p>}
               {authMessage && <p className="text-sm text-green-600">{authMessage}</p>}
 
@@ -1133,6 +1266,37 @@ export default function App() {
       </div>
     );
   }
+  const logoutModal = (
+    <AnimatePresence>
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Konfirmasi Logout</h3>
+            <p className="text-sm text-gray-600 mb-6">Apakah Anda yakin ingin keluar dari akun ini?</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleLogout}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
 
   if (showAdmin) {
     return (
@@ -1149,7 +1313,7 @@ export default function App() {
               Kembali ke Formulir
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
               aria-label="Logout"
               title="Logout"
@@ -1266,6 +1430,7 @@ export default function App() {
             </div>
           </FormSection>
         </div>
+        {logoutModal}
       </div>
     );
   }
@@ -1289,7 +1454,7 @@ export default function App() {
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-[#202124]">Profil Akun</h1>
               <button
-                onClick={handleLogout}
+                onClick={() => setShowLogoutConfirm(true)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
                 aria-label="Logout"
                 title="Logout"
@@ -1366,6 +1531,7 @@ export default function App() {
             )}
           </div>
         </div>
+        {logoutModal}
       </div>
     );
   }
@@ -1386,7 +1552,7 @@ export default function App() {
             <UserRound size={16} />
           </button>
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:text-[#7A1F2B] hover:border-[#7A1F2B]/30 transition-colors"
             aria-label="Logout"
             title="Logout"
@@ -1569,10 +1735,10 @@ export default function App() {
                               className={cn(
                                 "rounded-2xl border p-4 text-left transition-all",
                                 isSelected &&
-                                  "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
+                                "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
                                 !isSelected &&
-                                  !isFull &&
-                                  "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
+                                !isFull &&
+                                "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
                                 isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
                               )}
                             >
@@ -1699,6 +1865,7 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+      {logoutModal}
     </div>
   );
 }
