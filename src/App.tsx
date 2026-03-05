@@ -546,7 +546,7 @@ export default function App() {
           phone: data.phone,
           organization: data.organization ?? "",
           role: data.role ?? "",
-          vehicle_type: "-",
+          vehicle_type: "non_kendaraan",
           transfer_proof: uploadedTransferProofPath,
         });
 
