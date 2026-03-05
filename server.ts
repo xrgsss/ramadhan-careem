@@ -246,29 +246,22 @@ async function startServer() {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    if (!name || !phone || !vehicleType || !transferProof) {
+    if (!name || !phone || !transferProof) {
       return res
         .status(400)
-        .json({ error: "Name, phone, vehicle type, and transfer proof are required" });
+        .json({ error: "Name, phone, and transfer proof are required" });
     }
 
     if (typeof phone !== "string" || phone.trim().length < 10) {
       return res.status(400).json({ error: "Nomor WhatsApp minimal 10 digit" });
     }
 
-    if (typeof vehicleType !== "string" || !ALLOWED_VEHICLE_TYPES.has(vehicleType)) {
-      return res.status(400).json({ error: "Invalid vehicle type" });
-    }
+    // Check if the submission limit is reached
+    const submissionCountRow = db.prepare("SELECT COUNT(*) as count FROM submissions").get() as { count: number };
+    const currentSubmissions = submissionCountRow?.count || 0;
 
-    if (vehicleType === "mobil" || vehicleType === "motor") {
-      const currentCount = getVehicleCount(vehicleType);
-      const limit = VEHICLE_LIMITS[vehicleType];
-      if (currentCount >= limit) {
-        return res.status(409).json({
-          error: `Kuota ${vehicleType} sudah penuh`,
-          vehicleType,
-        });
-      }
+    if (currentSubmissions >= 30) {
+      return res.status(409).json({ error: "Pendaftaran sudah ditutup, kuota maksimal pendaftar telah terpenuhi." });
     }
 
     if (typeof transferProof !== "string" || transferProof.trim().length === 0) {
@@ -289,14 +282,23 @@ async function startServer() {
 
     try {
       const stmt = db.prepare(`
-        INSERT INTO submissions (name, email, user_id, phone, organization, role, vehicle_type, transfer_proof)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO submissions (name, email, user_id, phone, organization, role, transfer_proof)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      const result = stmt.run(name, authUserEmail, authUserId, phone, organization, role, vehicleType, transferProof);
+      const result = stmt.run(name, authUserEmail, authUserId, phone, organization, role, transferProof);
       res.json({ success: true, id: result.lastInsertRowid });
     } catch (error) {
       console.error("Database error:", error);
       res.status(500).json({ error: "Failed to save submission" });
+    }
+  });
+
+  app.get("/api/status", (req, res) => {
+    try {
+      const row = db.prepare("SELECT COUNT(*) as count FROM submissions").get() as { count: number };
+      res.json({ currentSubmissions: row?.count || 0, maxSubmissions: 30 });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch status" });
     }
   });
 

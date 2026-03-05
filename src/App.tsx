@@ -139,6 +139,7 @@ export default function App() {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isQuotaFull, setIsQuotaFull] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authEmail, setAuthEmail] = useState(() => {
     if (typeof window === "undefined") {
@@ -168,7 +169,7 @@ export default function App() {
   const transferProofInputRef = useRef<HTMLInputElement>(null);
   const heroVideoSrc = "/hero/hero-ramadhan.mp4";
   const isAdmin = (session?.user?.email ?? "").toLowerCase() === ADMIN_EMAIL;
-  const isRegistrationClosed = currentTimestamp >= REGISTRATION_DEADLINE_MS;
+  const isRegistrationClosed = currentTimestamp >= REGISTRATION_DEADLINE_MS || isQuotaFull;
   const countdown = getCountdownParts(REGISTRATION_DEADLINE_MS - currentTimestamp);
 
   const {
@@ -270,6 +271,22 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch("/api/status");
+        if (response.ok) {
+          const data = await response.json();
+          if (mounted && data.currentSubmissions >= data.maxSubmissions) {
+            setIsQuotaFull(true);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch status:", error);
+      }
+    };
+
+    fetchStatus();
 
     const initSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -1413,7 +1430,9 @@ export default function App() {
 
           {isRegistrationClosed ? (
             <p className="mt-3 text-sm font-medium text-red-700">
-              Waktu pendaftaran sudah berakhir. Formulir tidak dapat diisi.
+              {isQuotaFull
+                ? "Pendaftaran sudah ditutup, kuota maksimal pendaftar telah terpenuhi."
+                : "Waktu pendaftaran sudah berakhir. Formulir tidak dapat diisi."}
             </p>
           ) : (
             <div className="mt-4 grid grid-cols-4 gap-2 sm:gap-3">
@@ -1495,7 +1514,9 @@ export default function App() {
                 <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 md:p-8">
                   <h3 className="text-lg font-semibold text-red-700">Pendaftaran sudah ditutup</h3>
                   <p className="mt-2 text-sm text-red-600">
-                    Formulir tidak dapat diisi setelah {REGISTRATION_DEADLINE_TEXT}.
+                    {isQuotaFull
+                      ? "Kuota maksimal pendaftar telah terpenuhi."
+                      : `Formulir tidak dapat diisi setelah ${REGISTRATION_DEADLINE_TEXT}.`}
                   </p>
                 </div>
               ) : (
@@ -1534,7 +1555,7 @@ export default function App() {
                         <br />
                         no rek 901167340597
                         <br />
-                         
+
                         <br />
                         Include:
                         <br />
