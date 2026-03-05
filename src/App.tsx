@@ -1524,7 +1524,7 @@ export default function App() {
                     <div className="space-y-3">
                       <input type="hidden" {...register("transferProof")} />
                       <p className="text-sm text-gray-700 leading-relaxed">
-                        HTM : Rp. 75.000/pax
+                        HTM : Rp. 85.000/pax
                         <br />
                          
                         <br />
