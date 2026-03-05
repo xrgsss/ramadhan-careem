@@ -1526,13 +1526,25 @@ export default function App() {
                       <p className="text-sm text-gray-700 leading-relaxed">
                         HTM : Rp. 85.000/pax
                         <br />
-                         
+
                         <br />
                         Seabank
                         <br />
                         a.n Mukhammad Rangga Hari Febrianto
                         <br />
                         no rek 901167340597
+                        <br />
+                         
+                        <br />
+                        Include:
+                        <br />
+                        Buffet menu
+                        <br />
+                        Special Product Parfume x Ramadhan Careem
+                        <br />
+                        Keychain
+                        <br />
+                        and Sticker.
                       </p>
                       <label className="block text-sm font-medium text-gray-700">
                         Upload screenshot bukti transfer <span className="text-red-500">*</span>
