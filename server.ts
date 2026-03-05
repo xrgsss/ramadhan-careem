@@ -21,11 +21,6 @@ const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_ANON_KEY;
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_DATA_LENGTH = 8 * 1024 * 1024;
-const ALLOWED_VEHICLE_TYPES = new Set(["mobil", "motor", "non_kendaraan"]);
-const VEHICLE_LIMITS = {
-  mobil: 30,
-  motor: 20,
-} as const;
 
 function initializeDatabase(database: Database.Database) {
   database.exec(`
@@ -104,38 +99,6 @@ function ensureValidDatabaseFile(dbPath: string): string {
 
 const db = createDatabase(ensureValidDatabaseFile(DB_PATH));
 
-function getVehicleCount(vehicleType: keyof typeof VEHICLE_LIMITS) {
-  const row = db
-    .prepare("SELECT COUNT(*) as total FROM submissions WHERE vehicle_type = ?")
-    .get(vehicleType) as { total?: number } | undefined;
-
-  return row?.total ?? 0;
-}
-
-function getVehicleAvailability() {
-  const mobilUsed = getVehicleCount("mobil");
-  const motorUsed = getVehicleCount("motor");
-  const mobilLimit = VEHICLE_LIMITS.mobil;
-  const motorLimit = VEHICLE_LIMITS.motor;
-
-  return {
-    mobil: {
-      limit: mobilLimit,
-      used: mobilUsed,
-      remaining: Math.max(0, mobilLimit - mobilUsed),
-      isFull: mobilUsed >= mobilLimit,
-    },
-    motor: {
-      limit: motorLimit,
-      used: motorUsed,
-      remaining: Math.max(0, motorLimit - motorUsed),
-      isFull: motorUsed >= motorLimit,
-    },
-    non_kendaraan: {
-      isFull: false,
-    },
-  };
-}
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   console.warn(
@@ -272,13 +235,6 @@ async function startServer() {
     }
   });
 
-  app.get("/api/vehicle-availability", requireAuth, (req, res) => {
-    try {
-      res.json(getVehicleAvailability());
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch vehicle availability" });
-    }
-  });
 
   app.post("/api/submit", requireAuth, (req, res) => {
     const authUser = res.locals.authUser as SupabaseUser | undefined;
@@ -289,7 +245,7 @@ async function startServer() {
     if (!authUserId || !authUserEmail) {
       return res.status(401).json({ error: "Unauthorized" });
     }
-    
+
     if (!name || !phone || !vehicleType || !transferProof) {
       return res
         .status(400)

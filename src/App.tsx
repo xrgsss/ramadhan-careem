@@ -10,8 +10,6 @@ import {
   LogOut,
   Trash2,
   Download,
-  Car,
-  Bike,
   Clock3,
   Loader2,
   Send,
@@ -37,7 +35,6 @@ const formSchema = z.object({
   phone: z.string().min(10, "Nomor WhatsApp minimal 10 digit"),
   organization: z.string().min(2, "Nama organisasi minimal 2 karakter").optional().or(z.literal("")),
   role: z.string().min(2, "Jabatan minimal 2 karakter").optional().or(z.literal("")),
-  vehicleType: z.string().min(1, "Silakan pilih jenis kendaraan"),
   transferProof: z.string().min(1, "Bukti transfer wajib diunggah"),
 });
 
@@ -50,7 +47,6 @@ interface Submission {
   phone: string;
   organization: string;
   role: string;
-  vehicle_type: string;
   transfer_proof: string;
   created_at: string;
 }
@@ -67,36 +63,12 @@ type AuthMode = "login" | "signup";
 const ADMIN_EMAIL = "ramadhancareem@gmail.com";
 const MAX_TRANSFER_PROOF_SIZE_BYTES = 5 * 1024 * 1024;
 const TRANSFER_PROOF_BUCKET = "bukti-transfer";
-const REGISTRATION_DEADLINE_MS = new Date("2026-03-08T15:00:00+07:00").getTime();
-const REGISTRATION_DEADLINE_TEXT = "8 Maret 2026, 15:00 WIB";
+const REGISTRATION_DEADLINE_MS = new Date("2026-03-13T23:59:00+07:00").getTime();
+const REGISTRATION_DEADLINE_TEXT = "13 Maret 2026, 23:59 WIB";
 const LOGIN_BUMPER_DURATION_MS = 2200;
 const LOGIN_BUMPER_DURATION_REDUCED_MOTION_MS = 600;
 const LOGIN_BUMPER_LOGO_SRC = "/hero/logo.png";
 const LOGIN_BUMPER_SESSION_KEY = "rc-login-bumper-seen";
-
-interface VehicleAvailability {
-  mobil: {
-    limit: number;
-    used: number;
-    remaining: number;
-    isFull: boolean;
-  };
-  motor: {
-    limit: number;
-    used: number;
-    remaining: number;
-    isFull: boolean;
-  };
-  non_kendaraan: {
-    isFull: boolean;
-  };
-}
-
-const DEFAULT_VEHICLE_AVAILABILITY: VehicleAvailability = {
-  mobil: { limit: 30, used: 0, remaining: 30, isFull: false },
-  motor: { limit: 20, used: 0, remaining: 20, isFull: false },
-  non_kendaraan: { isFull: false },
-};
 
 function getCountdownParts(remainingMs: number) {
   const safeRemainingMs = Math.max(0, remainingMs);
@@ -111,29 +83,6 @@ function getCountdownParts(remainingMs: number) {
 
 function formatCountdownUnit(value: number) {
   return value.toString().padStart(2, "0");
-}
-
-function buildVehicleAvailability(mobilUsed: number, motorUsed: number): VehicleAvailability {
-  const mobilLimit = DEFAULT_VEHICLE_AVAILABILITY.mobil.limit;
-  const motorLimit = DEFAULT_VEHICLE_AVAILABILITY.motor.limit;
-
-  return {
-    mobil: {
-      limit: mobilLimit,
-      used: mobilUsed,
-      remaining: Math.max(0, mobilLimit - mobilUsed),
-      isFull: mobilUsed >= mobilLimit,
-    },
-    motor: {
-      limit: motorLimit,
-      used: motorUsed,
-      remaining: Math.max(0, motorLimit - motorUsed),
-      isFull: motorUsed >= motorLimit,
-    },
-    non_kendaraan: {
-      isFull: false,
-    },
-  };
 }
 
 function isDataImageUrl(value: string) {
@@ -156,18 +105,6 @@ function mapAuthErrorMessage(message: string, mode: AuthMode) {
   }
 
   return message;
-}
-
-function getVehicleTypeLabel(vehicleType: string) {
-  if (vehicleType === "non_kendaraan") {
-    return "Non Kendaraan";
-  }
-
-  if (!vehicleType) {
-    return "-";
-  }
-
-  return vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1);
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -228,9 +165,6 @@ export default function App() {
   const [transferProofName, setTransferProofName] = useState("");
   const [transferProofLinks, setTransferProofLinks] = useState<Record<string, string>>({});
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
-  const [vehicleAvailability, setVehicleAvailability] = useState<VehicleAvailability>(
-    DEFAULT_VEHICLE_AVAILABILITY,
-  );
   const transferProofInputRef = useRef<HTMLInputElement>(null);
   const heroVideoSrc = "/hero/hero-ramadhan.mp4";
   const isAdmin = (session?.user?.email ?? "").toLowerCase() === ADMIN_EMAIL;
@@ -244,12 +178,10 @@ export default function App() {
     setValue,
     setError,
     clearErrors,
-    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   });
-  const selectedVehicleType = watch("vehicleType");
 
   const handleTransferProofChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -425,7 +357,6 @@ export default function App() {
     setTransferProofFile(null);
     setTransferProofName("");
     setTransferProofLinks({});
-    setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
     setSession(null);
     await supabase.auth.signOut({ scope: "local" });
   };
@@ -445,7 +376,6 @@ export default function App() {
     setTransferProofLinks({});
     setAuthError("");
     setAuthMessage("");
-    setVehicleAvailability(DEFAULT_VEHICLE_AVAILABILITY);
     setSession(null);
 
     // Clear local session first so logout works even if network/revoke fails.
@@ -542,14 +472,6 @@ export default function App() {
       return;
     }
 
-    if ((data.vehicleType === "mobil" || data.vehicleType === "motor") && vehicleAvailability[data.vehicleType].isFull) {
-      setError("vehicleType", {
-        type: "manual",
-        message: `Kuota ${data.vehicleType} sudah penuh.`,
-      });
-      return;
-    }
-
     const sessionUserId = session?.user?.id ?? "";
     const sessionUserEmail = session?.user?.email ?? "";
     if (!sessionUserId || !sessionUserEmail) {
@@ -600,31 +522,6 @@ export default function App() {
       });
 
       if (response.status === 404) {
-        const [mobilUsage, motorUsage] = await Promise.all([
-          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "mobil"),
-          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "motor"),
-        ]);
-
-        if (mobilUsage.error || motorUsage.error) {
-          const message = mobilUsage.error?.message ?? motorUsage.error?.message ?? "Gagal cek kuota kendaraan.";
-          alert(message);
-          return;
-        }
-
-        const fallbackAvailability = buildVehicleAvailability(mobilUsage.count ?? 0, motorUsage.count ?? 0);
-        setVehicleAvailability(fallbackAvailability);
-
-        if (
-          (data.vehicleType === "mobil" || data.vehicleType === "motor") &&
-          fallbackAvailability[data.vehicleType].isFull
-        ) {
-          setError("vehicleType", {
-            type: "manual",
-            message: `Kuota ${data.vehicleType} sudah penuh.`,
-          });
-          return;
-        }
-
         const { error: insertError } = await supabase.from("submissions").insert({
           name: data.name,
           email: sessionUserEmail,
@@ -632,7 +529,6 @@ export default function App() {
           phone: data.phone,
           organization: data.organization ?? "",
           role: data.role ?? "",
-          vehicle_type: data.vehicleType,
           transfer_proof: uploadedTransferProofPath,
         });
 
@@ -648,22 +544,11 @@ export default function App() {
         if (transferProofInputRef.current) {
           transferProofInputRef.current.value = "";
         }
-        await fetchVehicleAvailability();
         return;
       }
 
       if (response.status === 401) {
         await handleUnauthorized();
-        return;
-      }
-
-      if (response.status === 409) {
-        const payload = await response.json().catch(() => null);
-        setError("vehicleType", {
-          type: "manual",
-          message: payload?.error ?? "Kuota kendaraan sudah penuh.",
-        });
-        await fetchVehicleAvailability();
         return;
       }
 
@@ -675,7 +560,6 @@ export default function App() {
         if (transferProofInputRef.current) {
           transferProofInputRef.current.value = "";
         }
-        await fetchVehicleAvailability();
       } else {
         const responseText = await response.text().catch(() => "");
         let parsedError: string | null = null;
@@ -695,50 +579,6 @@ export default function App() {
       alert("Terjadi kesalahan koneksi.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const fetchVehicleAvailability = async () => {
-    try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        await handleUnauthorized();
-        return;
-      }
-
-      const response = await fetch("/api/vehicle-availability", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (response.status === 401) {
-        await handleUnauthorized();
-        return;
-      }
-
-      if (response.status === 404) {
-        const [mobilUsage, motorUsage] = await Promise.all([
-          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "mobil"),
-          supabase.from("submissions").select("id", { count: "exact", head: true }).eq("vehicle_type", "motor"),
-        ]);
-
-        if (mobilUsage.error || motorUsage.error) {
-          throw new Error(mobilUsage.error?.message ?? motorUsage.error?.message ?? "Failed to fetch vehicle usage");
-        }
-
-        setVehicleAvailability(buildVehicleAvailability(mobilUsage.count ?? 0, motorUsage.count ?? 0));
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch vehicle availability");
-      }
-
-      const data = (await response.json()) as VehicleAvailability;
-      setVehicleAvailability(data);
-    } catch (error) {
-      console.error("Error fetching vehicle availability:", error);
     }
   };
 
@@ -835,7 +675,6 @@ export default function App() {
         }
 
         setSubmissions((prev) => prev.filter((item) => item.id !== submissionId));
-        await fetchVehicleAvailability();
         return;
       }
 
@@ -844,7 +683,6 @@ export default function App() {
       }
 
       setSubmissions((prev) => prev.filter((item) => item.id !== submissionId));
-      await fetchVehicleAvailability();
     } catch (error) {
       console.error("Error deleting submission:", error);
       alert("Gagal menghapus data pendaftar.");
@@ -867,7 +705,6 @@ export default function App() {
         Nama: sub.name || "-",
         Email: sub.email || "-",
         WhatsApp: sub.phone || "-",
-        Kendaraan: getVehicleTypeLabel(sub.vehicle_type),
         "Bukti Transfer": sub.transfer_proof ? "Ada" : "Tidak",
         Tanggal: formatDateTime(sub.created_at),
       }));
@@ -878,7 +715,6 @@ export default function App() {
         { wch: 24 },
         { wch: 28 },
         { wch: 18 },
-        { wch: 16 },
         { wch: 14 },
         { wch: 24 },
       ];
@@ -1033,11 +869,6 @@ export default function App() {
     }
   }, [showProfile, session]);
 
-  useEffect(() => {
-    if (session) {
-      fetchVehicleAvailability();
-    }
-  }, [session]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1365,7 +1196,6 @@ export default function App() {
                 <thead>
                   <tr className="bg-gray-50 border-y border-gray-200">
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nama</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kendaraan</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Bukti</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tanggal</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Aksi</th>
@@ -1374,7 +1204,7 @@ export default function App() {
                 <tbody className="divide-y divide-gray-100">
                   {submissions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-400 italic">
+                      <td colSpan={4} className="p-8 text-center text-gray-400 italic">
                         Belum ada data masuk
                       </td>
                     </tr>
@@ -1382,13 +1212,6 @@ export default function App() {
                     submissions.map((sub) => (
                       <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
                         <td className="p-4 text-sm text-gray-900 font-medium">{sub.name}</td>
-                        <td className="p-4 text-sm text-gray-600">
-                          {sub.vehicle_type === "non_kendaraan"
-                            ? "Non Kendaraan"
-                            : sub.vehicle_type
-                              ? sub.vehicle_type.charAt(0).toUpperCase() + sub.vehicle_type.slice(1)
-                              : "-"}
-                        </td>
                         <td className="p-4 text-sm text-gray-600">
                           {sub.transfer_proof ? (
                             getTransferProofHref(sub.transfer_proof) ? (
@@ -1513,10 +1336,6 @@ export default function App() {
                       </p>
                       <p>
                         <span className="font-medium text-gray-800">WhatsApp:</span> {submission.phone || "-"}
-                      </p>
-                      <p>
-                        <span className="font-medium text-gray-800">Kendaraan:</span>{" "}
-                        {getVehicleTypeLabel(submission.vehicle_type)}
                       </p>
                     </div>
                     <div className="mt-3">
@@ -1698,97 +1517,6 @@ export default function App() {
                         {...register("phone")}
                         placeholder="0812xxxxxx"
                       />
-                    </div>
-                  </FormSection>
-
-                  <FormSection title="Jenis Kendaraan" icon={<Car className="text-[#7A1F2B]" size={20} />}>
-                    <div className="space-y-3">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Pilih kendaraan yang digunakan <span className="text-red-500">*</span>
-                      </label>
-                      <input type="hidden" {...register("vehicleType")} />
-                      <div className="grid gap-3 md:grid-cols-3">
-                        {[
-                          {
-                            value: "mobil",
-                            label: "Mobil",
-                            description: "Kapasitas maksimal 30 kendaraan",
-                            icon: <Car size={18} />,
-                          },
-                          {
-                            value: "motor",
-                            label: "Motor",
-                            description: "Kapasitas maksimal 20 kendaraan",
-                            icon: <Bike size={18} />,
-                          },
-                          {
-                            value: "non_kendaraan",
-                            label: "Non Kendaraan",
-                            description: "Datang tanpa kendaraan pribadi",
-                            icon: <User size={18} />,
-                          },
-                        ].map((option) => {
-                          const isSelected = selectedVehicleType === option.value;
-                          const isLimitedOption = option.value === "mobil" || option.value === "motor";
-                          const availability =
-                            option.value === "mobil"
-                              ? vehicleAvailability.mobil
-                              : option.value === "motor"
-                                ? vehicleAvailability.motor
-                                : null;
-                          const isFull = isLimitedOption ? Boolean(availability?.isFull) : false;
-
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              disabled={isFull}
-                              onClick={() => {
-                                setValue("vehicleType", option.value, {
-                                  shouldDirty: true,
-                                  shouldValidate: true,
-                                });
-                                clearErrors("vehicleType");
-                              }}
-                              className={cn(
-                                "rounded-2xl border p-4 text-left transition-all",
-                                isSelected &&
-                                "border-[#7A1F2B] bg-gradient-to-br from-[#7A1F2B]/10 to-white ring-2 ring-[#7A1F2B]/20 shadow-sm",
-                                !isSelected &&
-                                !isFull &&
-                                "border-gray-200 bg-white hover:border-[#7A1F2B]/40 hover:shadow-sm",
-                                isFull && "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
-                              )}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className={cn("text-[#7A1F2B]", isFull && "text-gray-400")}>{option.icon}</span>
-                                  <p className="font-semibold">{option.label}</p>
-                                </div>
-                                {isSelected ? (
-                                  <span className="text-[11px] font-semibold text-[#7A1F2B] bg-[#7A1F2B]/10 px-2 py-1 rounded-full">
-                                    Dipilih
-                                  </span>
-                                ) : null}
-                              </div>
-                              <p className="mt-2 text-xs text-gray-500">{option.description}</p>
-
-                              {isLimitedOption && availability ? (
-                                <p
-                                  className={cn("mt-3 text-xs font-semibold", isFull ? "text-red-500" : "text-[#7A1F2B]")}
-                                >
-                                  {isFull ? "Kuota penuh" : `Sisa ${availability.remaining} slot`}
-                                </p>
-                              ) : (
-                                <p className="mt-3 text-xs font-semibold text-emerald-600">Selalu tersedia</p>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {errors.vehicleType ? (
-                        <p className="text-xs text-red-500">{errors.vehicleType.message}</p>
-                      ) : null}
                     </div>
                   </FormSection>
 
