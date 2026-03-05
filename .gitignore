@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# ignore video hero
+public/hero/hero-ramadhan.mp4
