@@ -260,7 +260,7 @@ async function startServer() {
     const submissionCountRow = db.prepare("SELECT COUNT(*) as count FROM submissions").get() as { count: number };
     const currentSubmissions = submissionCountRow?.count || 0;
 
-    if (currentSubmissions >= 30) {
+    if (currentSubmissions >= 0) {
       return res.status(409).json({ error: "Pendaftaran sudah ditutup, kuota maksimal pendaftar telah terpenuhi." });
     }
 
@@ -296,7 +296,7 @@ async function startServer() {
   app.get("/api/status", (req, res) => {
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM submissions").get() as { count: number };
-      res.json({ currentSubmissions: row?.count || 0, maxSubmissions: 30 });
+      res.json({ currentSubmissions: row?.count || 0, maxSubmissions: 0 });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch status" });
     }

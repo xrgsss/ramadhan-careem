@@ -139,7 +139,7 @@ export default function App() {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isQuotaFull, setIsQuotaFull] = useState(false);
+  const [isQuotaFull, setIsQuotaFull] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authEmail, setAuthEmail] = useState(() => {
     if (typeof window === "undefined") {
